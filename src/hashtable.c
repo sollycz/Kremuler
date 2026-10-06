@@ -1,5 +1,6 @@
 #include "hashtable.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -79,4 +80,118 @@ htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, 
     ht->value_free = value_free;
 
     return ht;
+}
+
+// calls tables value and key freeing functions if they are specified for a given slot
+static void slot_free(const htab *ht, htab_slot_t *slot) {
+    if (ht->key_free != NULL) {
+        // recast needed because of const type
+        ht->key_free((void *)slot->key);
+    }
+    if (ht->value_free != NULL) {
+        ht->value_free(slot->value);
+    }
+}
+
+void htab_destroy(htab *ht) {
+    if (ht == NULL) {
+        return;
+    }
+
+    for (htab_size_t i = 0; i < ht->capacity; i++) {
+        if (ht->slots[i].state == SLOT_USED) {
+            slot_free(ht, &ht->slots[i]);
+        }
+    }
+
+    free(ht->slots);
+    free(ht);
+}
+
+// linearly probes table, if key is found, returns true and out slot points to it
+// if key is not found, returns false and out slot points to the first available slot for insert
+static bool probe_slots(const htab *ht, htab_key_t key, htab_size_t hash, htab_slot_t **out_slot) {
+    htab_slot_t *deleted_slot = NULL;
+    htab_size_t i = hash % ht->capacity;
+
+    for (htab_size_t k = 0; k < ht->capacity; k++) {
+        htab_slot_t *s = &ht->slots[i];
+
+        if (s->state == SLOT_EMPTY) {
+            if (deleted_slot != NULL) {
+                *out_slot = deleted_slot;
+            } else {
+                *out_slot = s;
+            }
+            return false;
+        }
+        if (s->state == SLOT_DELETED) {
+            if (deleted_slot == NULL) {
+                deleted_slot = s;
+            }
+        } else if (s->hash == hash && ht->eq(s->key, key)) {
+            *out_slot = s;
+            return true;
+        }
+
+        i++;
+        if (i == ht->capacity) {
+            i = 0;
+        }
+    }
+
+    // this can return NULL, which needs to be taken into account for insert
+    *out_slot = deleted_slot;
+    return false;
+}
+
+bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
+    if (ht == NULL) {
+        return false;
+    }
+
+    htab_size_t hash = ht->hash(key);
+
+    htab_slot_t *ret_slot;
+    bool ret_bool = probe_slots(ht, key, hash, &ret_slot);
+
+    if (ret_bool == false) {
+        return false;
+    }
+    if (out != NULL) {
+        *out = ret_slot->value;
+    }
+    return true;
+}
+
+// TODO: remake htab_res_t and get rid of assert
+htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
+    // TODO: replace
+    assert(ht != NULL);
+
+    htab_size_t hash = ht->hash(key);
+
+    // TODO: check load factor / expand table
+
+    htab_slot_t *slot;
+    if (probe_slots(ht, key, hash, &slot)) {
+        return HTAB_EXISTS;
+    }
+    // TODO: replace
+    assert(slot != NULL);
+
+    if (slot->state == SLOT_EMPTY) {
+        // temp fix before resizing for testing
+        // TODO: replace
+        assert(ht->used + 1 < ht->capacity);
+        ht->used++;
+    }
+    ht->size++;
+
+    slot->state = SLOT_USED;
+    slot->hash = hash;
+    slot->key = key;
+    slot->value = value;
+
+    return HTAB_OK;
 }

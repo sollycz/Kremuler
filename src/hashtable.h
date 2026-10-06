@@ -18,13 +18,16 @@ typedef void (*htab_free_fn)(void *ptr);
 
 typedef enum { HTAB_OK, HTAB_EXISTS, HTAB_NOMEM } htab_res_t;
 
-// Creates table, returns NULL if failed
+// creates table, returns NULL if failed
 htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free);
 
+// destroys table and removes all slots, if key_free and value_free functions were provided
 void htab_destroy(htab *ht);
 
 htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value);
 
+// returns false if key was not found, otherwise returns false and set out to the coresponding value
+// will return false if no htab is provided
 bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out);
 
 bool htab_remove(htab *ht, htab_key_t key);
