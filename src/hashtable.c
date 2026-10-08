@@ -195,3 +195,46 @@ htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
 
     return HTAB_OK;
 }
+
+bool htab_remove(htab *ht, htab_key_t key) {
+    // TODO: replace
+    assert(ht != NULL);
+
+    htab_size_t hash = ht->hash(key);
+
+    htab_slot_t *slot;
+    if (!probe_slots(ht, key, hash, &slot)) {
+        return false;
+    }
+
+    slot_free(ht, slot);
+    ht->size--;
+
+    slot->state = SLOT_DELETED;
+
+    // temp for testing, can be removed
+    // TODO
+    slot->key = NULL;
+    slot->value = NULL;
+
+    return true;
+}
+
+htab_size_t htab_size(const htab *ht) {
+    // TODO: decide on error handling / replace asserts
+    assert(ht != NULL);
+    return ht->size;
+}
+
+void htab_foreach(const htab *ht, htab_foreach_fn fn) {
+    assert(ht != NULL);
+    assert(fn != NULL);
+
+    htab_slot_t *slot;
+    for (htab_size_t i = 0; i < ht->capacity; i++) {
+        slot = &ht->slots[i];
+        if (slot->state == SLOT_USED) {
+            fn(slot->key, slot->value);
+        }
+    }
+}
