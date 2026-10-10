@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 // out of a 100%
-#define HTAB_LOAD_FACTOR 65
+#define HTAB_LOAD_FACTOR 75
 #define HTAB_DELETED_LOAD_FACTOR 25
 
 typedef enum { SLOT_EMPTY, SLOT_USED, SLOT_DELETED } slot_state_t;
@@ -35,7 +35,9 @@ htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, 
         return NULL;
     }
 
-    assert(initial_capacity > 0);
+    if (initial_capacity < 8) {
+        initial_capacity = 8;
+    }
 
     htab *ht = malloc(sizeof(*ht));
     if (ht == NULL) {
