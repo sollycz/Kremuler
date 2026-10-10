@@ -5,8 +5,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-// starting size of table
-#define HTAB_MIN_CAPACITY 8
+// out of a 100%
+#define HTAB_LOAD_FACTOR 65
+#define HTAB_DELETED_LOAD_FACTOR 25
 
 typedef enum { SLOT_EMPTY, SLOT_USED, SLOT_DELETED } slot_state_t;
 
@@ -28,31 +29,20 @@ struct htab {
     htab_free_fn value_free;
 };
 
-// returns the closes min_capacty to the power of 2 to the argument n
-static htab_size_t pow2_round_up(htab_size_t n) {
-    htab_size_t cap = HTAB_MIN_CAPACITY;
-    while (cap < n) {
-        if (cap > ULONG_MAX / 2) {
-            // next bit shift would overflow
-            return 0;
-        }
-        cap <<= 1;
-    }
-    return cap;
-}
-
 htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free) {
     if (hash == NULL || eq == NULL) {
         // these functions cannot be unassigned
         return NULL;
     }
 
+    assert(initial_capacity > 0);
+
     htab *ht = malloc(sizeof(*ht));
     if (ht == NULL) {
         return NULL;
     }
 
-    htab_size_t capacity = pow2_round_up(initial_capacity);
+    htab_size_t capacity = initial_capacity;
     if (capacity == 0) {
         return NULL;
     }
@@ -164,14 +154,54 @@ bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
     return true;
 }
 
+// resizes slots for new_capacity, can be also used to clean all deleted token and clear space
+// return true if succesfull, otherwise false
+static bool resize(htab *ht, htab_size_t new_capacity) {
+    assert(ht->capacity <= new_capacity);
+
+    if (new_capacity > SIZE_MAX / sizeof(htab_slot_t)) {
+        // malloc would overflow
+        return false;
+    }
+
+    htab_slot_t *new_slots = malloc(new_capacity * sizeof(*new_slots));
+    if (new_slots == NULL) {
+        return false;
+    }
+
+    for (htab_size_t i = 0; i < new_capacity; i++) {
+        new_slots[i].state = SLOT_EMPTY;
+    }
+
+    htab_slot_t *old_slot;
+    htab_size_t new_index;
+    for (htab_size_t i = 0; i < ht->capacity; i++) {
+        old_slot = &ht->slots[i];
+        if (old_slot->state == SLOT_USED) {
+            new_index = old_slot->hash % new_capacity;
+            while (new_slots[new_index].state != SLOT_EMPTY) {
+                new_index++;
+                if (new_index == new_capacity) {
+                    new_index = 0;
+                }
+            }
+            new_slots[new_index] = *old_slot;
+        }
+    }
+
+    free(ht->slots);
+    ht->slots = new_slots;
+    ht->capacity = new_capacity;
+    ht->used = ht->size;
+    return true;
+}
+
 // TODO: remake htab_res_t and get rid of assert
 htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
     // TODO: replace
     assert(ht != NULL);
 
     htab_size_t hash = ht->hash(key);
-
-    // TODO: check load factor / expand table
 
     htab_slot_t *slot;
     if (probe_slots(ht, key, hash, &slot)) {
@@ -181,9 +211,28 @@ htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
     assert(slot != NULL);
 
     if (slot->state == SLOT_EMPTY) {
-        // temp fix before resizing for testing
-        // TODO: replace
-        assert(ht->used + 1 < ht->capacity);
+        htab_size_t cur_max_size = ht->capacity * HTAB_LOAD_FACTOR / 100;
+
+        if (ht->used >= cur_max_size) {
+            htab_size_t new_capacity = ht->capacity;
+
+            if (ht->used - ht->size < ht->capacity * HTAB_DELETED_LOAD_FACTOR / 100) {
+                new_capacity *= 2;
+
+                if (new_capacity > ULONG_MAX) {
+                    return HTAB_NOMEM;
+                }
+            }
+
+            if (!resize(ht, new_capacity)) {
+                return HTAB_NOMEM;
+            }
+            bool found = probe_slots(ht, key, hash, &slot);
+            assert(!found && slot != NULL);
+        }
+    }
+
+    if (slot->state == SLOT_EMPTY) {
         ht->used++;
     }
     ht->size++;
