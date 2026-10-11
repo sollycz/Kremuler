@@ -14,32 +14,43 @@ typedef htab_size_t (*htab_hash_fn)(htab_key_t key);
 typedef bool (*htab_eq_fn)(htab_key_t a, htab_key_t b);
 typedef void (*htab_foreach_fn)(htab_key_t key, htab_value_t value);
 
-// this can be NULL, depends on who owns the values (who is responsible for freeing them)
+// this can be NULL, depends on who owns the values (caller or the table).
 typedef void (*htab_free_fn)(void *ptr);
 
-typedef enum { HTAB_OK, HTAB_EXISTS, HTAB_NOMEM } htab_res_t;
+typedef enum {
+    HTAB_OK,     // inserted sucessfully.
+    HTAB_EXISTS, // key already exists, nothing changed.
+    HTAB_NOMEM   // table grow failed, nothing changed.
+} htab_res_t;
 
-// creates table, returns NULL if failed
+// creates a table. initial capacity below 8 is raised to 8.
+// hash and eq fns cannot be null, key_free and value_free can.
+// returns NULL if the table could not be created.
 htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free);
 
-// destroys table and removes all slots, if key_free and value_free functions were provided
+// destroys the table.
+// frees every value and key if key_free and value_free fns were provided.
 void htab_destroy(htab *ht);
 
-// inserts slot into table, returns enum
+// inserts slot into table. ht cannot be NULL.
 htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value);
 
-// returns false if key was not found, otherwise returns false and set out to the coresponding value
-// will return false if no htab is provided
+// searchs for a key. returns true and stores value in *out if key was found.
+// if key was not found, returns false and *out is unused.
+// ht cannot be NULL.
 bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out);
 
-// removes slot and calls freeing functions (if set)
-// return true if succesfull, otherwise false
+// removes key and calls freeing functions (if set).
+// return true if succesfull, otherwise false.
+// ht cannot be NULL
 bool htab_remove(htab *ht, htab_key_t key);
 
-// returns the size of table
+// returns the size of table (number of entries).
+// ht cannot be NULL.
 htab_size_t htab_size(const htab *ht);
 
-// runs foreach_fn for every used slot
+// runs foreach_fn for every entry in the table.
+// ht and fn cannot be NULL.
 void htab_foreach(const htab *ht, htab_foreach_fn fn);
 
 #endif // HASHTABLE_H

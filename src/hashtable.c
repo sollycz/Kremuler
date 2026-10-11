@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-// out of a 100%
+// out of a 100
 #define HTAB_LOAD_FACTOR 75
 #define HTAB_DELETED_LOAD_FACTOR 25
 
@@ -30,26 +30,19 @@ struct htab {
 };
 
 htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free) {
-    if (hash == NULL || eq == NULL) {
-        // these functions cannot be unassigned
-        return NULL;
-    }
+    assert(hash != NULL);
+    assert(eq != NULL);
 
     if (initial_capacity < 8) {
         initial_capacity = 8;
-    }
-
-    htab *ht = malloc(sizeof(*ht));
-    if (ht == NULL) {
+    } else if (initial_capacity > SIZE_MAX / sizeof(htab_slot_t)) {
         return NULL;
     }
 
     htab_size_t capacity = initial_capacity;
-    if (capacity == 0) {
-        return NULL;
-    }
-    if (capacity > SIZE_MAX / sizeof(htab_slot_t)) {
-        // malloc would overflow
+
+    htab *ht = malloc(sizeof(*ht));
+    if (ht == NULL) {
         return NULL;
     }
 
@@ -74,7 +67,7 @@ htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, 
     return ht;
 }
 
-// calls tables value and key freeing functions if they are specified for a given slot
+// frees given slot if htab has free fns set
 static void slot_free(const htab *ht, htab_slot_t *slot) {
     if (ht->key_free != NULL) {
         // recast needed because of const type
@@ -100,8 +93,8 @@ void htab_destroy(htab *ht) {
     free(ht);
 }
 
-// linearly probes table, if key is found, returns true and out slot points to it
-// if key is not found, returns false and out slot points to the first available slot for insert
+// linearly probes table, returns true if slot is found and out_slot points to it.
+// if key is not found, returns false and out slot points to the first available slot for insert.
 static bool probe_slots(const htab *ht, htab_key_t key, htab_size_t hash, htab_slot_t **out_slot) {
     htab_slot_t *deleted_slot = NULL;
     htab_size_t i = hash % ht->capacity;
@@ -138,9 +131,7 @@ static bool probe_slots(const htab *ht, htab_key_t key, htab_size_t hash, htab_s
 }
 
 bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
-    if (ht == NULL) {
-        return false;
-    }
+    assert(ht != NULL);
 
     htab_size_t hash = ht->hash(key);
 
@@ -156,8 +147,8 @@ bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
     return true;
 }
 
-// resizes slots for new_capacity, can be also used to clean all deleted token and clear space
-// return true if succesfull, otherwise false
+// resizes slots for new_capacity and clears all deleted slots.
+// return true if succesfull, otherwise false. (table is left unchanged)
 static bool resize(htab *ht, htab_size_t new_capacity) {
     assert(ht->capacity <= new_capacity);
 
@@ -198,9 +189,7 @@ static bool resize(htab *ht, htab_size_t new_capacity) {
     return true;
 }
 
-// TODO: remake htab_res_t and get rid of assert
 htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
-    // TODO: replace
     assert(ht != NULL);
 
     htab_size_t hash = ht->hash(key);
@@ -209,7 +198,6 @@ htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
     if (probe_slots(ht, key, hash, &slot)) {
         return HTAB_EXISTS;
     }
-    // TODO: replace
     assert(slot != NULL);
 
     if (slot->state == SLOT_EMPTY) {
@@ -248,7 +236,6 @@ htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
 }
 
 bool htab_remove(htab *ht, htab_key_t key) {
-    // TODO: replace
     assert(ht != NULL);
 
     htab_size_t hash = ht->hash(key);
@@ -263,8 +250,7 @@ bool htab_remove(htab *ht, htab_key_t key) {
 
     slot->state = SLOT_DELETED;
 
-    // temp for testing, can be removed
-    // TODO
+    // not nescessery
     slot->key = NULL;
     slot->value = NULL;
 
@@ -272,7 +258,6 @@ bool htab_remove(htab *ht, htab_key_t key) {
 }
 
 htab_size_t htab_size(const htab *ht) {
-    // TODO: decide on error handling / replace asserts
     assert(ht != NULL);
     return ht->size;
 }
