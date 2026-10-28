@@ -27,7 +27,15 @@ typedef enum {
     STATE_INT_DIGITS,
     STATE_INT_UNDERSCORE,
     STATE_INT_DIGITS_AFTER_ZERO,
-    STATE_INT_UNDERSCORE_AFTER_ZERO
+    STATE_INT_UNDERSCORE_AFTER_ZERO,
+    STATE_DOUBLE_DIGITS,
+    STATE_DOUBLE_UNDERSCORE,
+    STATE_DOUBLE_SUFFIX,
+    STATE_DOUBLE_EXPONENT,
+    STATE_DOUBLE_EXPONENT_SIGN,
+    STATE_DOUBLE_EXPONENT_DIGITS,
+    STATE_DOUBLE_EXPONENT_UNDERSCORE,
+    STATE_DOUBLE_AFTER_DOT
 } State;
 
 int scanner_get_token(Token *token) {
@@ -41,6 +49,20 @@ int scanner_get_token(Token *token) {
                 if (c == EOF) {
                     token->type = TOK_EOF;
                     return 0;
+                }
+
+                if (c == '.') {
+                    int result = buffer_init(&buffer);
+                    if (result != 0) {
+                        return result;
+                    }
+                    result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOT;
+                    break;
                 }
 
                 if (c == '0') {
@@ -65,6 +87,177 @@ int scanner_get_token(Token *token) {
 
                 return -1;
 
+            case STATE_DOT:
+                c = getchar();
+                if (c >= '0' && c <= '9') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_DIGITS;
+                    break;
+                }
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                token->type = TOK_DOT;
+                buffer_free(&buffer);
+                return 0;
+
+            case STATE_DOUBLE_DIGITS:
+                c = getchar();
+                while(c >= '0' && c <= '9') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    c = getchar();
+                }
+                if (c == '_') {
+                    state = STATE_DOUBLE_UNDERSCORE;
+                    break;
+                }
+                else if (c == 'D' || c == 'd') {
+                    state = STATE_DOUBLE_SUFFIX;
+                    break;
+                }
+                else if (c == 'E' || c == 'e') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    state = STATE_DOUBLE_EXPONENT;
+                    break;
+                }
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                token->type = TOK_DOUBLE_LITERAL;
+                token->data.num_float_val = strtod(buffer.data, NULL);
+
+                buffer_free(&buffer);
+                return 0;
+
+
+            case STATE_DOUBLE_UNDERSCORE:
+                c = getchar();
+                while (c == '_') {
+                    c = getchar();
+                }
+                    if (c >= '0' && c <= '9') {
+                        int result = buffer_append(&buffer, (char)c);
+                        if (result != 0) {
+                            buffer_free(&buffer);
+                            return result;
+                        }
+
+                        state = STATE_DOUBLE_DIGITS;
+                        break;
+                    }
+
+                buffer_free(&buffer);
+                return -1;
+
+            case STATE_DOUBLE_SUFFIX:
+                token->type = TOK_DOUBLE_LITERAL;
+                token->data.num_float_val = strtod(buffer.data, NULL);
+                buffer_free(&buffer);
+                return 0;
+
+            case STATE_DOUBLE_EXPONENT:
+                c = getchar();
+                if (c == '+' || c == '-') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    state = STATE_DOUBLE_EXPONENT_SIGN;
+                    break;
+                }
+                else if (c >= '0' && c <= '9') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                        state = STATE_DOUBLE_EXPONENT_DIGITS;
+                        break;
+                }
+
+                buffer_free(&buffer);
+                return -1;
+
+            case STATE_DOUBLE_EXPONENT_SIGN:
+                c = getchar();
+                if (c >= '0' && c <= '9') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    state = STATE_DOUBLE_EXPONENT_DIGITS;
+                    break;
+                }
+                buffer_free(&buffer);
+                return -1;
+
+            case STATE_DOUBLE_EXPONENT_DIGITS:
+                c = getchar();
+                while(c >= '0' && c <= '9') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    c = getchar();
+                }
+                if (c == '_') {
+                    state = STATE_DOUBLE_EXPONENT_UNDERSCORE;
+                    break;
+                }
+                else if (c == 'D' || c == 'd') {
+                    state = STATE_DOUBLE_SUFFIX;
+                    break;
+                }
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                token->type = TOK_DOUBLE_LITERAL;
+                token->data.num_float_val = strtod(buffer.data, NULL);
+
+                buffer_free(&buffer);
+                return 0;
+
+            case STATE_DOUBLE_EXPONENT_UNDERSCORE:
+                c = getchar();
+                while (c == '_') {
+                    c = getchar();
+                }
+                if (c >= '0' && c <= '9') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    state = STATE_DOUBLE_EXPONENT_DIGITS;
+                    break;
+                }
+                buffer_free(&buffer);
+                return -1;
+
             case STATE_INT_ZERO: {
                 c = getchar();
                 int result = buffer_init(&buffer);
@@ -78,12 +271,30 @@ int scanner_get_token(Token *token) {
                 }
 
                 if (c >= '0' && c <= '9') {
-                    result = buffer_append(&buffer, (char)c);
+                    int result = buffer_append(&buffer, (char)c);
                     if (result != 0) {
                         buffer_free(&buffer);
                         return result;
                     }
                     state = STATE_INT_DIGITS_AFTER_ZERO;
+                    break;
+                }
+                if (c == '.') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_AFTER_DOT;
+                    break;
+                }
+                if (c == 'e' || c == 'E') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_EXPONENT;
                     break;
                 }
                 if (c == '_') {
@@ -98,23 +309,57 @@ int scanner_get_token(Token *token) {
                 token->data.num_int_val = 0;
                 buffer_free(&buffer);
                 return 0;
+
             }
 
             case STATE_INT_DIGITS_AFTER_ZERO:
                 c = getchar();
-                while (c >= '0' && c <= '9') {
+                while(c >= '0' && c <= '9') {
                     int result = buffer_append(&buffer, (char)c);
                     if (result != 0) {
                         buffer_free(&buffer);
                         return result;
                     }
+
                     c = getchar();
+                }
+                if (c == 'e' || c == 'E') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_EXPONENT;
+                    break;
+                }
+                if (c == '.') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_AFTER_DOT;
+                    break;
                 }
                 if (c == '_') {
                     state = STATE_INT_UNDERSCORE_AFTER_ZERO;
                     break;
                 }
 
+                buffer_free(&buffer);
+                return -1;
+
+            case STATE_DOUBLE_AFTER_DOT:
+                c = getchar();
+                if (c >= '0' && c <= '9') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_DIGITS;
+                    break;
+                }
                 buffer_free(&buffer);
                 return -1;
 
@@ -132,7 +377,6 @@ int scanner_get_token(Token *token) {
                     state = STATE_INT_DIGITS_AFTER_ZERO;
                     break;
                 }
-
                 buffer_free(&buffer);
                 return -1;
 
@@ -150,10 +394,27 @@ int scanner_get_token(Token *token) {
                     state = STATE_INT_UNDERSCORE;
                     break;
                 }
+                if (c == '.') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_AFTER_DOT;
+                    break;
+                }
+                if (c == 'e' || c == 'E') {
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    state = STATE_DOUBLE_EXPONENT;
+                    break;
+                }
                 if (c != EOF) {
                     ungetc(c, stdin);
                 }
-
                 token->type = TOK_INT_LITERAL;
                 token->data.num_int_val = strtoll(buffer.data, NULL, 10);
                 buffer_free(&buffer);
@@ -174,7 +435,6 @@ int scanner_get_token(Token *token) {
                     state = STATE_INT_DIGITS;
                     break;
                 }
-
                 buffer_free(&buffer);
                 return -1;
 
