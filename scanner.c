@@ -83,6 +83,7 @@ static unsigned int number_of_nested_comments = 0;
 static bool reading_indentation = true;
 static bool tab_in_indent = false;
 static unsigned int current_indent = 0;
+static bool trailing_comma_allowed = false;
 
 static int scanner_read_token(Token *token) {
     int c = getchar();
@@ -1019,6 +1020,7 @@ static int scanner_read_token(Token *token) {
                 reading_indentation = true;
                 current_indent = 0;
                 tab_in_indent = false;
+                trailing_comma_allowed = true;
 
                 if (number_of_parentheses == 0 && line_has_token) {
                     token->type = TOK_EOL;
@@ -1109,6 +1111,7 @@ static int scanner_read_token(Token *token) {
 
 int scanner_get_token(Token *token) {
     token->indent = 0;
+    token->lf_before = false;
 
     int result = scanner_read_token(token);
 
@@ -1120,6 +1123,9 @@ int scanner_get_token(Token *token) {
             }
             return -1;
         }
+
+        token->lf_before = trailing_comma_allowed;
+        trailing_comma_allowed = false;
 
         line_has_token = true;
         reading_indentation = false;
