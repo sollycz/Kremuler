@@ -40,7 +40,9 @@ typedef enum {
     STATE_IDENTIFIER_UNDERSCORE,
     STATE_IDENTIFIER,
     STATE_EQUAL_SIGN,
-    STATE_EXCLAMATION_MARK
+    STATE_EXCLAMATION_MARK,
+    STATE_ONE_LINE_COMMENT,
+    STATE_NEW_LINE
 } State;
 
 static TokenType keyword_or_id(const char *text) {
@@ -68,8 +70,9 @@ static TokenType keyword_or_id(const char *text) {
 }
 
 static unsigned int number_of_parentheses = 0;
+static bool line_has_token = false;
 
-int scanner_get_token(Token *token) {
+static int scanner_read_token(Token *token) {
     int c = getchar();
     State state = STATE_START;
     StringBuffer buffer = {0};
@@ -80,6 +83,11 @@ int scanner_get_token(Token *token) {
                 if (c == EOF) {
                     token->type = TOK_EOF;
                     return 0;
+                }
+
+                if (c == '\n') {
+                    state = STATE_NEW_LINE;
+                    break;
                 }
 
                 if (c == '+') {
@@ -347,6 +355,16 @@ int scanner_get_token(Token *token) {
                 return 0;
 
             case STATE_SLASH:
+                c = getchar();
+                if (c == '/') {
+                    state = STATE_ONE_LINE_COMMENT;
+                    break;
+                }
+
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
                 token->type = TOK_DIVISION;
                 return 0;
 
@@ -743,9 +761,49 @@ int scanner_get_token(Token *token) {
                 buffer_free(&buffer);
                 return -1;
 
+            case STATE_ONE_LINE_COMMENT:
+                c = getchar();
+                while (c != '\n' && c != EOF) {
+                    c = getchar();
+                }
+
+                if (c == EOF) {
+                    token->type = TOK_EOF;
+                    return 0;
+                }
+
+                state = STATE_NEW_LINE;
+                break;
+
+            case STATE_NEW_LINE:
+                if (number_of_parentheses == 0 && line_has_token) {
+                    token->type = TOK_EOL;
+                    line_has_token = false;
+                    return 0;
+                }
+
+                c = getchar();
+                if (c == EOF) {
+                    token->type = TOK_EOF;
+                    return 0;
+                }
+
+                state = STATE_START;
+                break;
+
             default:
                 buffer_free(&buffer);
                 return 42; 
         }
     }
+}
+
+int scanner_get_token(Token *token) {
+    int result = scanner_read_token(token);
+
+    if (result == 0 && token->type != TOK_EOF && token->type != TOK_EOL) {
+        line_has_token = true;
+    }
+
+    return result;
 }
