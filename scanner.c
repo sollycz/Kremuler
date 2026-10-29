@@ -80,6 +80,9 @@ static unsigned int number_of_parentheses = 0;
 static bool line_has_token = false;
 static bool comment_has_lf = false;
 static unsigned int number_of_nested_comments = 0;
+static bool reading_indentation = true;
+static bool tab_in_indent = false;
+static unsigned int current_indent = 0;
 
 static int scanner_read_token(Token *token) {
     int c = getchar();
@@ -92,6 +95,22 @@ static int scanner_read_token(Token *token) {
                 if (c == EOF) {
                     token->type = TOK_EOF;
                     return 0;
+                }
+
+                if (c == ' ') {
+                    if (reading_indentation) {
+                        current_indent++;
+                    }
+                    c = getchar();
+                    break;
+                }
+
+                if (c == '\t') {
+                    if (reading_indentation) {
+                        tab_in_indent = true;
+                    }
+                    c = getchar();
+                    break;
                 }
 
                 if (c == '\n') {
@@ -997,6 +1016,10 @@ static int scanner_read_token(Token *token) {
                 break;
 
             case STATE_NEW_LINE:
+                reading_indentation = true;
+                current_indent = 0;
+                tab_in_indent = false;
+
                 if (number_of_parentheses == 0 && line_has_token) {
                     token->type = TOK_EOL;
                     line_has_token = false;
@@ -1085,10 +1108,22 @@ static int scanner_read_token(Token *token) {
 }
 
 int scanner_get_token(Token *token) {
+    token->indent = 0;
+
     int result = scanner_read_token(token);
 
     if (result == 0 && token->type != TOK_EOF && token->type != TOK_EOL) {
+        if (tab_in_indent) {
+            if (token->type == TOK_ID || token->type == TOK_STRING_LITERAL) {
+                free(token->data.str_val);
+                token->data.str_val = NULL;
+            }
+            return -1;
+        }
+
         line_has_token = true;
+        reading_indentation = false;
+        token->indent = current_indent;
     }
 
     return result;
