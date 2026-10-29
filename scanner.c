@@ -122,7 +122,7 @@ static int scanner_ungetc(int c) {
     return result;
 }
 
-static int scanner_read_token(Token *token) {
+static ScannerErrorCode scanner_read_token(Token *token) {
     int c = scanner_getchar();
     State state = STATE_START;
     StringBuffer buffer = {0};
@@ -132,7 +132,7 @@ static int scanner_read_token(Token *token) {
             case STATE_START:
                 if (c == EOF) {
                     token->type = TOK_EOF;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 if (c == ' ') {
@@ -240,8 +240,8 @@ static int scanner_read_token(Token *token) {
                 }
 
                 if (c == '"') {
-                    int result = buffer_init(&buffer);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_init(&buffer);
+                    if (result != SCANNER_OK) {
                         return result;
                     }
 
@@ -250,12 +250,12 @@ static int scanner_read_token(Token *token) {
                 }
 
                 if (c == '.') {
-                    int result = buffer_init(&buffer);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_init(&buffer);
+                    if (result != SCANNER_OK) {
                         return result;
                     }
                     result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -264,12 +264,12 @@ static int scanner_read_token(Token *token) {
                 }
 
                 if (c == '_') {
-                    int result = buffer_init(&buffer);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_init(&buffer);
+                    if (result != SCANNER_OK) {
                         return result;
                     }
                     result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -279,12 +279,12 @@ static int scanner_read_token(Token *token) {
                 }
 
                 if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-                    int result = buffer_init(&buffer);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_init(&buffer);
+                    if (result != SCANNER_OK) {
                         return result;
                     }
                     result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -299,12 +299,12 @@ static int scanner_read_token(Token *token) {
                 }
 
                 if (c >= '1' && c <= '9') {
-                    int result = buffer_init(&buffer);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_init(&buffer);
+                    if (result != SCANNER_OK) {
                         return result;
                     }
                     result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -313,33 +313,33 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
 
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_PLUS:
                 token->type = TOK_PLUS;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_MINUS:
                 token->type = TOK_MINUS;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_MULTIPLY:
                 token->type = TOK_MULTIPLY;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_VERTICAL_BAR:
                 c = scanner_getchar();
                 if (c == '|') {
                     token->type = TOK_OR;
-                    return 0;
+                    return SCANNER_OK;
                 }
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_EQUAL_SIGN:
                 c = scanner_getchar();
                 if (c == '=') {
                     token->type = TOK_EQUAL;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 if (c != EOF) {
@@ -347,18 +347,18 @@ static int scanner_read_token(Token *token) {
                 }
 
                 token->type = TOK_ASSIGN;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_LESS:
                 c = scanner_getchar();
                 if (c == '=') {
                     token->type = TOK_LESS_OR_EQUAL_THAN;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 if (c == '-') {
                     token->type = TOK_CONTROL_ARROW;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 if (c != EOF) {
@@ -366,13 +366,13 @@ static int scanner_read_token(Token *token) {
                 }
 
                 token->type = TOK_LESS_THAN;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_GREATER:
                 c = scanner_getchar();
                 if (c == '=') {
                     token->type = TOK_GREATER_OR_EQUAL_THAN;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 if (c != EOF) {
@@ -380,13 +380,13 @@ static int scanner_read_token(Token *token) {
                 }
 
                 token->type = TOK_GREATER_THAN;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_EXCLAMATION_MARK:
                 c = scanner_getchar();
                 if (c == '=') {
                     token->type = TOK_NOT_EQUAL;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 if (c != EOF) {
@@ -394,44 +394,44 @@ static int scanner_read_token(Token *token) {
                 }
 
                 token->type = TOK_NOT;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_AMPERSAND:
                 c = scanner_getchar();
                 if (c == '&') {
                     token->type = TOK_AND;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_LEFT_PARENTHESES:
                 token->type = TOK_LEFT_PARENTHESIS;
                 number_of_parentheses++;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_RIGHT_PARENTHESES:
                 token->type = TOK_RIGHT_PARENTHESIS;
                 if (number_of_parentheses > 0) {
                     number_of_parentheses--;
                 }
-                return 0;
+                return SCANNER_OK;
 
             case STATE_COMMA:
                 token->type = TOK_COMMA;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_COLON:
                 token->type = TOK_COLON;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_SEMICOLON:
                 token->type = TOK_SEMICOLON;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_AT:
                 token->type = TOK_AT;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_SLASH:
                 c = scanner_getchar();
@@ -451,13 +451,13 @@ static int scanner_read_token(Token *token) {
                 }
 
                 token->type = TOK_DIVISION;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_IDENTIFIER_UNDERSCORE:
                 c = scanner_getchar();
                 if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9')) {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -467,13 +467,13 @@ static int scanner_read_token(Token *token) {
                 }
 
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_IDENTIFIER:
                 c = scanner_getchar();
                 if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9')) {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -493,13 +493,13 @@ static int scanner_read_token(Token *token) {
                     buffer_free(&buffer);
                 }
 
-                return 0;
+                return SCANNER_OK;
 
             case STATE_DOT:
                 c = scanner_getchar();
                 if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -512,13 +512,13 @@ static int scanner_read_token(Token *token) {
 
                 token->type = TOK_DOT;
                 buffer_free(&buffer);
-                return 0;
+                return SCANNER_OK;
 
             case STATE_DOUBLE_DIGITS:
                 c = scanner_getchar();
                 while(c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -534,8 +534,8 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 else if (c == 'E' || c == 'e') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -551,7 +551,7 @@ static int scanner_read_token(Token *token) {
                 token->data.num_float_val = strtod(buffer.data, NULL);
 
                 buffer_free(&buffer);
-                return 0;
+                return SCANNER_OK;
 
 
             case STATE_DOUBLE_UNDERSCORE:
@@ -560,8 +560,8 @@ static int scanner_read_token(Token *token) {
                     c = scanner_getchar();
                 }
                     if (c >= '0' && c <= '9') {
-                        int result = buffer_append(&buffer, (char)c);
-                        if (result != 0) {
+                        ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                        if (result != SCANNER_OK) {
                             buffer_free(&buffer);
                             return result;
                         }
@@ -571,19 +571,19 @@ static int scanner_read_token(Token *token) {
                     }
 
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_DOUBLE_SUFFIX:
                 token->type = TOK_DOUBLE_LITERAL;
                 token->data.num_float_val = strtod(buffer.data, NULL);
                 buffer_free(&buffer);
-                return 0;
+                return SCANNER_OK;
 
             case STATE_DOUBLE_EXPONENT:
                 c = scanner_getchar();
                 if (c == '+' || c == '-') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -592,8 +592,8 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 else if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -602,13 +602,13 @@ static int scanner_read_token(Token *token) {
                 }
 
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_DOUBLE_EXPONENT_SIGN:
                 c = scanner_getchar();
                 if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -617,13 +617,13 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_DOUBLE_EXPONENT_DIGITS:
                 c = scanner_getchar();
                 while(c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -646,7 +646,7 @@ static int scanner_read_token(Token *token) {
                 token->data.num_float_val = strtod(buffer.data, NULL);
 
                 buffer_free(&buffer);
-                return 0;
+                return SCANNER_OK;
 
             case STATE_DOUBLE_EXPONENT_UNDERSCORE:
                 c = scanner_getchar();
@@ -654,8 +654,8 @@ static int scanner_read_token(Token *token) {
                     c = scanner_getchar();
                 }
                 if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -664,23 +664,23 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_INT_ZERO: {
                 c = scanner_getchar();
-                int result = buffer_init(&buffer);
-                if (result != 0) {
+                ScannerErrorCode result = buffer_init(&buffer);
+                if (result != SCANNER_OK) {
                     return result;
                 }
                 result = buffer_append(&buffer, '0');
-                if (result != 0) {
+                if (result != SCANNER_OK) {
                     buffer_free(&buffer);
                     return result;
                 }
 
                 if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -688,8 +688,8 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 if (c == '.') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -697,8 +697,8 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 if (c == 'e' || c == 'E') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -716,15 +716,15 @@ static int scanner_read_token(Token *token) {
                 token->type = TOK_INT_LITERAL;
                 token->data.num_int_val = 0;
                 buffer_free(&buffer);
-                return 0;
+                return SCANNER_OK;
 
             }
 
             case STATE_INT_DIGITS_AFTER_ZERO:
                 c = scanner_getchar();
                 while(c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -732,8 +732,8 @@ static int scanner_read_token(Token *token) {
                     c = scanner_getchar();
                 }
                 if (c == 'e' || c == 'E') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -741,8 +741,8 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 if (c == '.') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -755,13 +755,13 @@ static int scanner_read_token(Token *token) {
                 }
 
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_DOUBLE_AFTER_DOT:
                 c = scanner_getchar();
                 if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -769,7 +769,7 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_INT_UNDERSCORE_AFTER_ZERO:
                 c = scanner_getchar();
@@ -777,8 +777,8 @@ static int scanner_read_token(Token *token) {
                     c = scanner_getchar();
                 }
                 if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -786,13 +786,13 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_INT_DIGITS:
                 c = scanner_getchar();
                 while (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -803,8 +803,8 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 if (c == '.') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -812,8 +812,8 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 if (c == 'e' || c == 'E') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -826,7 +826,7 @@ static int scanner_read_token(Token *token) {
                 token->type = TOK_INT_LITERAL;
                 token->data.num_int_val = strtoll(buffer.data, NULL, 10);
                 buffer_free(&buffer);
-                return 0;
+                return SCANNER_OK;
 
             case STATE_INT_UNDERSCORE:
                 c = scanner_getchar();
@@ -834,8 +834,8 @@ static int scanner_read_token(Token *token) {
                     c = scanner_getchar();
                 }
                 if (c >= '0' && c <= '9') {
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -844,7 +844,7 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_STRING_FIRST_QUOTE:
                 c = scanner_getchar();
@@ -855,15 +855,15 @@ static int scanner_read_token(Token *token) {
                 while (c != '"') {
                     if (c == EOF || c == '\n') {
                         buffer_free(&buffer);
-                        return -1;
+                        return SCANNER_LEXICAL_ERROR;
                     }
                     if (c == '\\') {
                         state = STATE_STRING_ESCAPE;
                         break;
                     }
 
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -876,13 +876,13 @@ static int scanner_read_token(Token *token) {
 
                 token->type = TOK_STRING_LITERAL;
                 token->data.str_val = buffer.data;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_STRING_ESCAPE:
                 c = scanner_getchar();
                 if (c == '"' || c == '\\') {
-                    int result = buffer_append(&buffer, (char)c);
-                        if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                        if (result != SCANNER_OK) {
                             buffer_free(&buffer);
                             return result;
                         }
@@ -892,8 +892,8 @@ static int scanner_read_token(Token *token) {
                 }
                 else if (c == 'n') {
                     c = '\n';
-                    int result = buffer_append(&buffer, (char)c);
-                        if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                        if (result != SCANNER_OK) {
                             buffer_free(&buffer);
                             return result;
                         }
@@ -902,8 +902,8 @@ static int scanner_read_token(Token *token) {
                 }
                 else if (c == 't') {
                     c = '\t';
-                    int result = buffer_append(&buffer, (char)c);
-                        if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                        if (result != SCANNER_OK) {
                             buffer_free(&buffer);
                             return result;
                         }
@@ -912,8 +912,8 @@ static int scanner_read_token(Token *token) {
                 }
                 else if (c == 'r') {
                     c = '\r';
-                    int result = buffer_append(&buffer, (char)c);
-                        if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                        if (result != SCANNER_OK) {
                             buffer_free(&buffer);
                             return result;
                         }
@@ -921,22 +921,22 @@ static int scanner_read_token(Token *token) {
                     break;
                 }
                 buffer_free(&buffer);
-                return -1;
+                return SCANNER_LEXICAL_ERROR;
 
             case STATE_STRING_BODY:
                 c = scanner_getchar();
                 while (c != '"') {
                     if (c == EOF || c == '\n') {
                         buffer_free(&buffer);
-                        return -1;
+                        return SCANNER_LEXICAL_ERROR;
                     }
                     if (c == '\\') {
                         state = STATE_STRING_ESCAPE;
                         break;
                     }
 
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -949,7 +949,7 @@ static int scanner_read_token(Token *token) {
 
                 token->type = TOK_STRING_LITERAL;
                 token->data.str_val = buffer.data;
-                return 0;
+                return SCANNER_OK;
 
 
             case STATE_STRING_SECOND_QUOTE:
@@ -964,18 +964,18 @@ static int scanner_read_token(Token *token) {
                 }
                 token->type = TOK_STRING_LITERAL;
                 token->data.str_val = buffer.data;
-                return 0;
+                return SCANNER_OK;
 
             case STATE_STRING_MULTILINE_BODY:
                 c = scanner_getchar();
                 while (c != '"') {
                     if (c == EOF) {
                         buffer_free(&buffer);
-                        return -1;
+                        return SCANNER_LEXICAL_ERROR;
                     }
 
-                    int result = buffer_append(&buffer, (char)c);
-                    if (result != 0) {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -990,7 +990,7 @@ static int scanner_read_token(Token *token) {
                 c = scanner_getchar();
                 if (c == EOF) {
                     buffer_free(&buffer);
-                    return -1;
+                    return SCANNER_LEXICAL_ERROR;
                 }
                 if (c == '"') {
                     state = STATE_STRING_MULTILINE_SECOND_QUOTE;
@@ -1000,8 +1000,8 @@ static int scanner_read_token(Token *token) {
                     scanner_ungetc(c);
                 }
 
-                int result = buffer_append(&buffer, '"');
-                if (result != 0) {
+                ScannerErrorCode result = buffer_append(&buffer, '"');
+                if (result != SCANNER_OK) {
                     buffer_free(&buffer);
                     return result;
                 }
@@ -1014,22 +1014,22 @@ static int scanner_read_token(Token *token) {
                 c = scanner_getchar();
                 if (c == EOF) {
                     buffer_free(&buffer);
-                    return -1;
+                    return SCANNER_LEXICAL_ERROR;
                     }
                 if (c == '"') {
                     token->type = TOK_STRING_LITERAL;
                     token->data.str_val = buffer.data;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
-                int result = buffer_append(&buffer, '"');
-                if (result != 0) {
+                ScannerErrorCode result = buffer_append(&buffer, '"');
+                if (result != SCANNER_OK) {
                     buffer_free(&buffer);
                     return result;
                 }
 
                 result = buffer_append(&buffer, '"');
-                if (result != 0) {
+                if (result != SCANNER_OK) {
                     buffer_free(&buffer);
                     return result;
                 }
@@ -1050,7 +1050,7 @@ static int scanner_read_token(Token *token) {
 
                 if (c == EOF) {
                     token->type = TOK_EOF;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 state = STATE_NEW_LINE;
@@ -1065,13 +1065,13 @@ static int scanner_read_token(Token *token) {
                 if (number_of_parentheses == 0 && line_has_token) {
                     token->type = TOK_EOL;
                     line_has_token = false;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 c = scanner_getchar();
                 if (c == EOF) {
                     token->type = TOK_EOF;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 state = STATE_START;
@@ -1084,7 +1084,7 @@ static int scanner_read_token(Token *token) {
                         c = scanner_getchar();
                     }
                     if (c == EOF) {
-                        return -1;
+                        return SCANNER_LEXICAL_ERROR;
                     }
                     if (c == '\n') {
                         comment_has_lf = true;
@@ -1094,7 +1094,7 @@ static int scanner_read_token(Token *token) {
                     if (c == '/') {
                         c = scanner_getchar();
                         if (c == EOF) {
-                            return -1;
+                            return SCANNER_LEXICAL_ERROR;
                         }
                         if (c == '*') {
                             number_of_nested_comments++;
@@ -1105,7 +1105,7 @@ static int scanner_read_token(Token *token) {
                     if (c == '*') {
                         c = scanner_getchar();
                         if (c == EOF) {
-                            return -1;
+                            return SCANNER_LEXICAL_ERROR;
                         }
                         if (c == '/') {
                             number_of_nested_comments--;
@@ -1130,13 +1130,13 @@ static int scanner_read_token(Token *token) {
                     }
                     if (c == EOF) {
                         token->type = TOK_EOF;
-                        return 0;
+                        return SCANNER_OK;
                     }
-                    return -1;
+                    return SCANNER_LEXICAL_ERROR;
                 }
                 if (c == EOF) {
                     token->type = TOK_EOF;
-                    return 0;
+                    return SCANNER_OK;
                 }
 
                 state = STATE_START;
@@ -1144,29 +1144,29 @@ static int scanner_read_token(Token *token) {
 
             default:
                 buffer_free(&buffer);
-                return 42; 
+                return SCANNER_INVALID_STATE_ERROR;
         }
     }
 }
 
-int scanner_get_token(Token *token) {
+ScannerErrorCode scanner_get_token(Token *token) {
     token->indent = 0;
     token->lf_before = false;
 
-    int result = scanner_read_token(token);
+    ScannerErrorCode result = scanner_read_token(token);
 
-    if (result == 0 && (token->type == TOK_EOL || token->type == TOK_EOF)) {
+    if (result == SCANNER_OK && (token->type == TOK_EOL || token->type == TOK_EOF)) {
         token->line = last_line;
         token->column = last_column;
     }
 
-    if (result == 0 && token->type != TOK_EOF && token->type != TOK_EOL) {
+    if (result == SCANNER_OK && token->type != TOK_EOF && token->type != TOK_EOL) {
         if (tab_in_indent) {
             if (token->type == TOK_ID || token->type == TOK_STRING_LITERAL) {
                 free(token->data.str_val);
                 token->data.str_val = NULL;
             }
-            return -1;
+            return SCANNER_LEXICAL_ERROR;
         }
 
         token->lf_before = trailing_comma_allowed;

@@ -2,6 +2,7 @@
 #define SCANNER_BUFFER_H
 
 #include <stddef.h>
+#include "scanner.h"
 
 typedef struct {
     char *data;
@@ -9,10 +10,10 @@ typedef struct {
     size_t capacity;
 } StringBuffer;
 
-int buffer_init(StringBuffer *buffer);
+ScannerErrorCode buffer_init(StringBuffer *buffer);
 void buffer_free(StringBuffer *buffer);
-int buffer_increase(StringBuffer *buffer);
-int buffer_append(StringBuffer *buffer, char c);
+ScannerErrorCode buffer_increase(StringBuffer *buffer);
+ScannerErrorCode buffer_append(StringBuffer *buffer, char c);
 
 
 #endif

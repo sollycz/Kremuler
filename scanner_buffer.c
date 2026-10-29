@@ -4,18 +4,18 @@
 
 #define INIT_CAPACITY 16
 
-int buffer_init(StringBuffer *buffer)
+ScannerErrorCode buffer_init(StringBuffer *buffer)
 {
     buffer->data = malloc(INIT_CAPACITY);
     if (buffer->data == NULL) {
-        return 42; // TO DO
+        return SCANNER_MEMORY_ERROR;
     }
 
     buffer->length = 0;
     buffer->capacity = INIT_CAPACITY;
     buffer->data[0] = '\0';
 
-    return 0;
+    return SCANNER_OK;
 }
 
 void buffer_free(StringBuffer *buffer)
@@ -27,30 +27,30 @@ void buffer_free(StringBuffer *buffer)
     buffer->capacity = 0;
 }
 
-int buffer_increase(StringBuffer *buffer)
+ScannerErrorCode buffer_increase(StringBuffer *buffer)
 {
     if (buffer->capacity > SIZE_MAX / 2) {
-        return 42; // TO DO
+        return SCANNER_MEMORY_ERROR;
     }
 
     size_t new_capacity = buffer->capacity * 2;
 
     char *new_data = realloc(buffer->data, new_capacity);
     if (new_data == NULL) {
-        return 42; // TO DO
+        return SCANNER_MEMORY_ERROR;
     }
 
     buffer->data = new_data;
     buffer->capacity = new_capacity;
 
-    return 0;
+    return SCANNER_OK;
 }
 
-int buffer_append(StringBuffer *buffer, char c) 
+ScannerErrorCode buffer_append(StringBuffer *buffer, char c)
 {
     if (buffer->length + 2 > buffer->capacity) {
-        int result = buffer_increase(buffer);
-        if (result != 0) {
+        ScannerErrorCode result = buffer_increase(buffer);
+        if (result != SCANNER_OK) {
             return result;
         }
     }
@@ -59,5 +59,5 @@ int buffer_append(StringBuffer *buffer, char c)
     buffer->length++;
     buffer->data[buffer->length] = '\0';
 
-    return 0;
+    return SCANNER_OK;
 }
