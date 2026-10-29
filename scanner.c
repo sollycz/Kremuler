@@ -46,7 +46,10 @@ typedef enum {
     STATE_MULTI_LINE_COMMENT,
     STATE_STRING_ESCAPE,
     STATE_STRING_BODY,
-    STATE_STRING_SECOND_QUOTE
+    STATE_STRING_SECOND_QUOTE,
+    STATE_STRING_MULTILINE_BODY,
+    STATE_STRING_MULTILINE_FIRST_QUOTE,
+    STATE_STRING_MULTILINE_SECOND_QUOTE
 } State;
 
 static TokenType keyword_or_id(const char *text) {
@@ -891,6 +894,10 @@ static int scanner_read_token(Token *token) {
 
             case STATE_STRING_SECOND_QUOTE:
                 c = getchar();
+                if (c == '"') {
+                    state = STATE_STRING_MULTILINE_BODY;
+                    break;
+                }
 
                 if (c != EOF) {
                     ungetc(c, stdin);
@@ -898,6 +905,82 @@ static int scanner_read_token(Token *token) {
                 token->type = TOK_STRING_LITERAL;
                 token->data.str_val = buffer.data;
                 return 0;
+
+            case STATE_STRING_MULTILINE_BODY:
+                c = getchar();
+                while (c != '"') {
+                    if (c == EOF) {
+                        buffer_free(&buffer);
+                        return -1;
+                    }
+
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    c = getchar();
+                }
+                state = STATE_STRING_MULTILINE_FIRST_QUOTE;
+                break;
+
+
+            case STATE_STRING_MULTILINE_FIRST_QUOTE: {
+                c = getchar();
+                if (c == EOF) {
+                    buffer_free(&buffer);
+                    return -1;
+                }
+                if (c == '"') {
+                    state = STATE_STRING_MULTILINE_SECOND_QUOTE;
+                    break;
+                }
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                int result = buffer_append(&buffer, '"');
+                if (result != 0) {
+                    buffer_free(&buffer);
+                    return result;
+                }
+
+                state = STATE_STRING_MULTILINE_BODY;
+                break;
+            }
+
+            case STATE_STRING_MULTILINE_SECOND_QUOTE: {
+                c = getchar();
+                if (c == EOF) {
+                    buffer_free(&buffer);
+                    return -1;
+                    }
+                if (c == '"') {
+                    token->type = TOK_STRING_LITERAL;
+                    token->data.str_val = buffer.data;
+                    return 0;
+                }
+
+                int result = buffer_append(&buffer, '"');
+                if (result != 0) {
+                    buffer_free(&buffer);
+                    return result;
+                }
+
+                result = buffer_append(&buffer, '"');
+                if (result != 0) {
+                    buffer_free(&buffer);
+                    return result;
+                }
+
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                state = STATE_STRING_MULTILINE_BODY;
+                break;
+            }
 
             case STATE_ONE_LINE_COMMENT:
                 c = getchar();
