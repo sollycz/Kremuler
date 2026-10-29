@@ -38,7 +38,9 @@ typedef enum {
     STATE_DOUBLE_EXPONENT_UNDERSCORE,
     STATE_DOUBLE_AFTER_DOT,
     STATE_IDENTIFIER_UNDERSCORE,
-    STATE_IDENTIFIER
+    STATE_IDENTIFIER,
+    STATE_EQUAL_SIGN,
+    STATE_EXCLAMATION_MARK
 } State;
 
 static TokenType keyword_or_id(const char *text) {
@@ -65,6 +67,8 @@ static TokenType keyword_or_id(const char *text) {
     return TOK_ID;
 }
 
+static unsigned int number_of_parentheses = 0;
+
 int scanner_get_token(Token *token) {
     int c = getchar();
     State state = STATE_START;
@@ -76,6 +80,86 @@ int scanner_get_token(Token *token) {
                 if (c == EOF) {
                     token->type = TOK_EOF;
                     return 0;
+                }
+
+                if (c == '+') {
+                    state = STATE_PLUS;
+                    break;
+                }
+
+                if (c == '-') {
+                    state = STATE_MINUS;
+                    break;
+                }
+
+                if (c == '/') {
+                    state = STATE_SLASH;
+                    break;
+                }
+
+                if (c == '*') {
+                    state = STATE_MULTIPLY;
+                    break;
+                }
+
+                if (c == '<') {
+                    state = STATE_LESS;
+                    break;
+                }
+
+                if (c == '>') {
+                    state = STATE_GREATER;
+                    break;
+                }
+
+                if (c == '(') {
+                    state = STATE_LEFT_PARENTHESES;
+                    break;
+                }
+
+                if (c == ')') {
+                    state = STATE_RIGHT_PARENTHESES;
+                    break;
+                }
+
+                if (c == ',') {
+                    state = STATE_COMMA;
+                    break;
+                }
+
+                if (c == ':') {
+                    state = STATE_COLON;
+                    break;
+                }
+
+                if (c == ';') {
+                    state = STATE_SEMICOLON;
+                    break;
+                }
+
+                if (c == '@') {
+                    state = STATE_AT;
+                    break;
+                }
+
+                if (c == '&') {
+                    state = STATE_AMPERSAND;
+                    break;
+                }
+
+                if (c == '|') {
+                    state = STATE_VERTICAL_BAR;
+                    break;
+                }
+
+                if (c == '=') {
+                    state = STATE_EQUAL_SIGN;
+                    break;
+                }
+
+                if (c == '!') {
+                    state = STATE_EXCLAMATION_MARK;
+                    break;
                 }
 
                 if (c == '.') {
@@ -143,6 +227,128 @@ int scanner_get_token(Token *token) {
                 }
 
                 return -1;
+
+            case STATE_PLUS:
+                token->type = TOK_PLUS;
+                return 0;
+
+            case STATE_MINUS:
+                token->type = TOK_MINUS;
+                return 0;
+
+            case STATE_MULTIPLY:
+                token->type = TOK_MULTIPLY;
+                return 0;
+
+            case STATE_VERTICAL_BAR:
+                c = getchar();
+                if (c == '|') {
+                    token->type = TOK_OR;
+                    return 0;
+                }
+                return -1;
+
+            case STATE_EQUAL_SIGN:
+                c = getchar();
+                if (c == '=') {
+                    token->type = TOK_EQUAL;
+                    return 0;
+                }
+
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                token->type = TOK_ASSIGN;
+                return 0;
+
+            case STATE_LESS:
+                c = getchar();
+                if (c == '=') {
+                    token->type = TOK_LESS_OR_EQUAL_THAN;
+                    return 0;
+                }
+
+                if (c == '-') {
+                    token->type = TOK_CONTROL_ARROW;
+                    return 0;
+                }
+
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                token->type = TOK_LESS_THAN;
+                return 0;
+
+            case STATE_GREATER:
+                c = getchar();
+                if (c == '=') {
+                    token->type = TOK_GREATER_OR_EQUAL_THAN;
+                    return 0;
+                }
+
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                token->type = TOK_GREATER_THAN;
+                return 0;
+
+            case STATE_EXCLAMATION_MARK:
+                c = getchar();
+                if (c == '=') {
+                    token->type = TOK_NOT_EQUAL;
+                    return 0;
+                }
+
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+
+                token->type = TOK_NOT;
+                return 0;
+
+            case STATE_AMPERSAND:
+                c = getchar();
+                if (c == '&') {
+                    token->type = TOK_AND;
+                    return 0;
+                }
+
+                return -1;
+
+            case STATE_LEFT_PARENTHESES:
+                token->type = TOK_LEFT_PARENTHESIS;
+                number_of_parentheses++;
+                return 0;
+
+            case STATE_RIGHT_PARENTHESES:
+                token->type = TOK_RIGHT_PARENTHESIS;
+                if (number_of_parentheses > 0) {
+                    number_of_parentheses--;
+                }
+                return 0;
+
+            case STATE_COMMA:
+                token->type = TOK_COMMA;
+                return 0;
+
+            case STATE_COLON:
+                token->type = TOK_COLON;
+                return 0;
+
+            case STATE_SEMICOLON:
+                token->type = TOK_SEMICOLON;
+                return 0;
+
+            case STATE_AT:
+                token->type = TOK_AT;
+                return 0;
+
+            case STATE_SLASH:
+                token->type = TOK_DIVISION;
+                return 0;
 
             case STATE_IDENTIFIER_UNDERSCORE:
                 c = getchar();
