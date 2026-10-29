@@ -20,7 +20,7 @@ typedef enum {
     STATE_COLON,
     STATE_SEMICOLON,
     STATE_AT,
-    STATE_QUOTATION_MARK,
+    STATE_STRING_FIRST_QUOTE,
     STATE_AMPERSAND,
     STATE_VERTICAL_BAR,
     STATE_DOT,
@@ -43,7 +43,10 @@ typedef enum {
     STATE_EXCLAMATION_MARK,
     STATE_ONE_LINE_COMMENT,
     STATE_NEW_LINE,
-    STATE_MULTI_LINE_COMMENT
+    STATE_MULTI_LINE_COMMENT,
+    STATE_STRING_ESCAPE,
+    STATE_STRING_BODY,
+    STATE_STRING_SECOND_QUOTE
 } State;
 
 static TokenType keyword_or_id(const char *text) {
@@ -170,6 +173,16 @@ static int scanner_read_token(Token *token) {
 
                 if (c == '!') {
                     state = STATE_EXCLAMATION_MARK;
+                    break;
+                }
+
+                if (c == '"') {
+                    int result = buffer_init(&buffer);
+                    if (result != 0) {
+                        return result;
+                    }
+
+                    state = STATE_STRING_FIRST_QUOTE;
                     break;
                 }
 
@@ -769,6 +782,122 @@ static int scanner_read_token(Token *token) {
                 }
                 buffer_free(&buffer);
                 return -1;
+
+            case STATE_STRING_FIRST_QUOTE:
+                c = getchar();
+                if (c == '"') {
+                    state = STATE_STRING_SECOND_QUOTE;
+                    break;
+                }
+                while (c != '"') {
+                    if (c == EOF || c == '\n') {
+                        buffer_free(&buffer);
+                        return -1;
+                    }
+                    if (c == '\\') {
+                        state = STATE_STRING_ESCAPE;
+                        break;
+                    }
+
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    c = getchar();
+                }
+                if (state == STATE_STRING_ESCAPE) {
+                    break;
+                }
+
+                token->type = TOK_STRING_LITERAL;
+                token->data.str_val = buffer.data;
+                return 0;
+
+            case STATE_STRING_ESCAPE:
+                c = getchar();
+                if (c == '"' || c == '\\') {
+                    int result = buffer_append(&buffer, (char)c);
+                        if (result != 0) {
+                            buffer_free(&buffer);
+                            return result;
+                        }
+
+                    state = STATE_STRING_BODY;
+                    break;
+                }
+                else if (c == 'n') {
+                    c = '\n';
+                    int result = buffer_append(&buffer, (char)c);
+                        if (result != 0) {
+                            buffer_free(&buffer);
+                            return result;
+                        }
+                    state = STATE_STRING_BODY;
+                    break;
+                }
+                else if (c == 't') {
+                    c = '\t';
+                    int result = buffer_append(&buffer, (char)c);
+                        if (result != 0) {
+                            buffer_free(&buffer);
+                            return result;
+                        }
+                    state = STATE_STRING_BODY;
+                    break;
+                }
+                else if (c == 'r') {
+                    c = '\r';
+                    int result = buffer_append(&buffer, (char)c);
+                        if (result != 0) {
+                            buffer_free(&buffer);
+                            return result;
+                        }
+                    state = STATE_STRING_BODY;
+                    break;
+                }
+                buffer_free(&buffer);
+                return -1;
+
+            case STATE_STRING_BODY:
+                c = getchar();
+                while (c != '"') {
+                    if (c == EOF || c == '\n') {
+                        buffer_free(&buffer);
+                        return -1;
+                    }
+                    if (c == '\\') {
+                        state = STATE_STRING_ESCAPE;
+                        break;
+                    }
+
+                    int result = buffer_append(&buffer, (char)c);
+                    if (result != 0) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    c = getchar();
+                }
+                if (state == STATE_STRING_ESCAPE) {
+                    break;
+                }
+
+                token->type = TOK_STRING_LITERAL;
+                token->data.str_val = buffer.data;
+                return 0;
+
+
+            case STATE_STRING_SECOND_QUOTE:
+                c = getchar();
+
+                if (c != EOF) {
+                    ungetc(c, stdin);
+                }
+                token->type = TOK_STRING_LITERAL;
+                token->data.str_val = buffer.data;
+                return 0;
 
             case STATE_ONE_LINE_COMMENT:
                 c = getchar();
