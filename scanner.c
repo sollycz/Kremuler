@@ -42,7 +42,8 @@ typedef enum {
     STATE_EQUAL_SIGN,
     STATE_EXCLAMATION_MARK,
     STATE_ONE_LINE_COMMENT,
-    STATE_NEW_LINE
+    STATE_NEW_LINE,
+    STATE_MULTI_LINE_COMMENT
 } State;
 
 static TokenType keyword_or_id(const char *text) {
@@ -71,6 +72,8 @@ static TokenType keyword_or_id(const char *text) {
 
 static unsigned int number_of_parentheses = 0;
 static bool line_has_token = false;
+static bool comment_has_lf = false;
+static unsigned int number_of_nested_comments = 0;
 
 static int scanner_read_token(Token *token) {
     int c = getchar();
@@ -358,6 +361,12 @@ static int scanner_read_token(Token *token) {
                 c = getchar();
                 if (c == '/') {
                     state = STATE_ONE_LINE_COMMENT;
+                    break;
+                }
+                if (c == '*') {
+                    state = STATE_MULTI_LINE_COMMENT;
+                    number_of_nested_comments = 1;
+                    comment_has_lf = false;
                     break;
                 }
 
@@ -783,6 +792,71 @@ static int scanner_read_token(Token *token) {
                 }
 
                 c = getchar();
+                if (c == EOF) {
+                    token->type = TOK_EOF;
+                    return 0;
+                }
+
+                state = STATE_START;
+                break;
+
+            case STATE_MULTI_LINE_COMMENT:
+                c = getchar();
+                while (1) {
+                    while (c != '*' && c != EOF && c != '/' && c != '\n') {
+                        c = getchar();
+                    }
+                    if (c == EOF) {
+                        return -1;
+                    }
+                    if (c == '\n') {
+                        comment_has_lf = true;
+                        c = getchar();
+                        continue;
+                    }
+                    if (c == '/') {
+                        c = getchar();
+                        if (c == EOF) {
+                            return -1;
+                        }
+                        if (c == '*') {
+                            number_of_nested_comments++;
+                            c = getchar();
+                            continue;
+                        }
+                    }
+                    if (c == '*') {
+                        c = getchar();
+                        if (c == EOF) {
+                            return -1;
+                        }
+                        if (c == '/') {
+                            number_of_nested_comments--;
+                            if (number_of_nested_comments == 0) {
+                                break;
+                            }
+
+                            c = getchar();
+                            continue;
+                        }
+                    }
+                }
+                c = getchar();
+
+                if (comment_has_lf == true) {
+                    while (c == ' ' || c == '\t') {
+                        c = getchar();
+                    }
+                    if (c == '\n') {
+                        state = STATE_NEW_LINE;
+                        break;
+                    }
+                    if (c == EOF) {
+                        token->type = TOK_EOF;
+                        return 0;
+                    }
+                    return -1;
+                }
                 if (c == EOF) {
                     token->type = TOK_EOF;
                     return 0;
