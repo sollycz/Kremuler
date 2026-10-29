@@ -763,8 +763,22 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                     break;
                 }
 
+                for (size_t i = 0; i < buffer.length; i++) {
+                    if (buffer.data[i] != '0') {
+                        buffer_free(&buffer);
+                        return SCANNER_LEXICAL_ERROR;
+                    }
+                }
+
+                if (c != EOF) {
+                    scanner_ungetc(c);
+                }
+
+                token->type = TOK_INT_LITERAL;
+                token->data.num_int_val = 0;
                 buffer_free(&buffer);
-                return SCANNER_LEXICAL_ERROR;
+                return SCANNER_OK;
+
 
             case STATE_DOUBLE_AFTER_DOT:
                 c = scanner_getchar();
