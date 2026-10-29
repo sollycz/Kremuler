@@ -1,3 +1,9 @@
+/**
+ * @file scanner_buffer.c
+ * @brief Dynamic character buffer implementation for the IFJ26 scanner.
+ * @author David Zoblivý (xzoblid00)
+ */
+
 #include "scanner_buffer.h"
 #include <stdlib.h>
 #include <stdint.h>

@@ -1,3 +1,10 @@
+/**
+ * @file scanner.h
+ * @brief Header file for the lexical analyzer for IFJ26
+ * @author David Zoblivý (xzoblid00)
+ * @todo add comments
+ */
+
 #ifndef SCANNER_H
 #define SCANNER_H
 

@@ -1,3 +1,12 @@
+/**
+ * @file scanner.c
+ * @brief Lexical analyzer for IFJ26 to IFJcode26
+ * @author David Zoblivý (xzoblid00)
+ * @todo VALMEM extension
+ * @todo INTERPOLATEDS
+ * @todo add comments
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

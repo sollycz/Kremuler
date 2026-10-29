@@ -1,3 +1,10 @@
+/**
+ * @file scanner_buffer.h
+ * @brief Header file for the dynamic character buffer of the IFJ26 scanner.
+ * @author David Zoblivý (xzoblid00)
+ * @todo add comments
+ */
+
 #ifndef SCANNER_BUFFER_H
 #define SCANNER_BUFFER_H
 

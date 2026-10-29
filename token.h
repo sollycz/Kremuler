@@ -1,3 +1,9 @@
+/**
+ * @file token.h
+ * @brief Token types and data structures for the IFJ26 compiler.
+ * @author David Zoblivý (xzoblid00)
+ */
+
 #ifndef TOKEN_H
 #define TOKEN_H
 
