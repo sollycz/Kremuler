@@ -1155,6 +1155,14 @@ ScannerErrorCode scanner_get_token(Token *token) {
 
     ScannerErrorCode result = scanner_read_token(token);
 
+    if (ferror(stdin) != 0) {
+        if (result == SCANNER_OK && (token->type == TOK_ID || token->type == TOK_STRING_LITERAL)) {
+            free(token->data.str_val);
+            token->data.str_val = NULL;
+        }
+        return SCANNER_READ_ERROR;
+    }
+
     if (result == SCANNER_OK && (token->type == TOK_EOL || token->type == TOK_EOF)) {
         token->line = last_line;
         token->column = last_column;
