@@ -1,3 +1,10 @@
+/**
+ * @file hashtable.h
+ * @brief Header file for Hashtable ADT
+ * @author Filip Radulovič (xradulf00)
+ * @todo fix comments
+ */
+
 #ifndef HASHTABLE_H
 #define HASHTABLE_H
 

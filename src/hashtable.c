@@ -1,3 +1,10 @@
+/**
+ * @file hashtable.c
+ * @brief Implementation of Hashtable ADT
+ * @author Filip Radulovič (xradulf00)
+ * @todo fix comments
+ */
+
 #include "hashtable.h"
 
 #include <assert.h>
