@@ -1,4 +1,5 @@
 #include "precedence_parser.h"
+#include "precedence_stack.h"
 #include "token.h"
 
 static const char precedence_table[19][19] = {
