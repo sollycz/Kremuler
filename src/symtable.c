@@ -23,9 +23,7 @@ typedef struct {
     stab_type_t receiver_type;
 } stab_func_key;
 
-// djb2
-htab_size_t hash_fn(htab_key_t key) {
-    const unsigned char *s = key;
+static htab_size_t djb2(const unsigned char *s) {
     htab_size_t hash = 5381;
     int c;
     while ((c = *s++)) {
@@ -35,16 +33,30 @@ htab_size_t hash_fn(htab_key_t key) {
     return hash;
 }
 
+static htab_size_t func_hash(htab_key_t key) {
+    const stab_func_key *k = key;
+    htab_size_t hash = djb2((const unsigned char *)k->name);
+    if (k->is_method) {
+        hash = (hash << 5) + hash;
+        hash += (htab_size_t)k->receiver_type + 1;
+    }
+    return hash;
+}
+
+static htab_size_t str_hash(htab_key_t key) {
+    return djb2(key);
+}
+
 bool eq_fn(htab_key_t a, htab_key_t b) {
-    const stab_func *x = a;
-    const stab_func *y = b;
+    const stab_func_key *x = a;
+    const stab_func_key *y = b;
     if (strcmp(x->name, y->name) != 0) {
         return false;
     }
     if (x->is_method != y->is_method) {
         return false;
     }
-    if (x->is_method && x->receiver.type != y->receiver.type) {
+    if (x->is_method && x->receiver_type != y->receiver_type) {
         return false;
     }
     return true;
@@ -207,7 +219,7 @@ stab *stab_new() {
     st->cur_func = NULL;
     st->top = NULL;
 
-    st->funcs = htab_init(8, hash_fn, eq_fn, free, value_free_fn);
+    st->funcs = htab_init(INITIAL_HTAB_CAPACITY, func_hash, eq_fn, free, value_free_fn);
     if (st->funcs == NULL) {
         free(st);
         return NULL;
