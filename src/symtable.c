@@ -1,6 +1,7 @@
 #include "symtable.h"
 #include "hashtable.h"
 #include <stdlib.h>
+#include <string.h>
 
 #define INITIAL_HTAB_CAPACITY 8
 
@@ -16,10 +17,76 @@ struct stab {
     scope *top;
 };
 
-htab_size_t hash_fn(htab_key_t key);
-bool eq_fn(htab_key_t a, htab_key_t b);
-void key_free_fn(void *ptr);
-void value_free_fn(void *ptr);
+typedef struct {
+    const char *name;
+    bool is_method;
+    stab_type_t receiver_type;
+} stab_func_key;
+
+// djb2
+htab_size_t hash_fn(htab_key_t key) {
+    const unsigned char *s = key;
+    htab_size_t hash = 5381;
+    int c;
+    while ((c = *s++)) {
+        hash = ((hash << 5) + hash) + c;
+    }
+
+    return hash;
+}
+
+bool eq_fn(htab_key_t a, htab_key_t b) {
+    const stab_func *x = a;
+    const stab_func *y = b;
+    if (strcmp(x->name, y->name) != 0) {
+        return false;
+    }
+    if (x->is_method != y->is_method) {
+        return false;
+    }
+    if (x->is_method && x->receiver.type != y->receiver.type) {
+        return false;
+    }
+    return true;
+}
+
+void value_free_fn(void *ptr) {
+    stab_func *f = ptr;
+    if (!f) {
+        return;
+    }
+
+    for (stab_size_t i = 0; i < f->list_count; i++) {
+        for (stab_size_t j = 0; j < f->param_lists[i].count; j++) {
+            free((void *)f->param_lists[i].params[j].name);
+        }
+        free(f->param_lists[i].params);
+    }
+    free(f->param_lists);
+
+    for (stab_size_t i = 0; i < f->locals_count; i++) {
+        free((void *)f->locals[i]->name);
+        free(f->locals[i]);
+    }
+    free(f->locals);
+
+    free((void *)f->receiver.name);
+    free((void *)f->name);
+    free(f);
+}
+
+static char *str_copy(const char *s) {
+    if (!s) {
+        return NULL;
+    }
+    stab_size_t n = strlen(s) + 1;
+    char *t = malloc(n);
+    if (!t) {
+        return NULL;
+    }
+    memcpy(t, s, n);
+    return t;
+}
 
 static const stab_func BUILTINS[] = {
     {.name = "print",
@@ -140,14 +207,14 @@ stab *stab_new() {
     st->cur_func = NULL;
     st->top = NULL;
 
-    st->funcs = htab_init(8, hash_fn, eq_fn, key_free_fn, value_free_fn);
+    st->funcs = htab_init(8, hash_fn, eq_fn, free, value_free_fn);
     if (st->funcs == NULL) {
         free(st);
         return NULL;
     }
 
     if (!register_builtin_fns(st)) {
-        free(st->funcs);
+        htab_destroy(st->funcs);
         free(st);
         return NULL;
     }
