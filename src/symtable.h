@@ -91,7 +91,7 @@ stab_func *stab_add_func(stab *st,
                          stab_size_t list_count,
                          stab_type_t ret_type,
                          bool ret_explicit,
-                         const stab_param receiver,
+                         const stab_param *receiver,
                          stab_res_t *res);
 
 // finds function or method by name, otherwise returns null
