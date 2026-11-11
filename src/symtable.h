@@ -1,3 +1,10 @@
+/**
+ * @file symtable.h
+ * @brief Header file for Symtable ADT
+ * @author Filip Radulovič (xradulf00)
+ * @todo fix comments
+ */
+
 #ifndef SYMTABLE_H
 #define SYMTABLE_H
 

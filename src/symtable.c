@@ -1,3 +1,10 @@
+/**
+ * @file symtable.c
+ * @brief Implementation of Symtable ADT
+ * @author Filip Radulovič (xradulf00)
+ * @todo fix comments
+ */
+
 #include "symtable.h"
 #include "hashtable.h"
 #include <assert.h>
