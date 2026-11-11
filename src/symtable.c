@@ -552,3 +552,20 @@ stab_func *stab_find_func(const stab *st, const char *name, const stab_type_t *r
 
     return NULL;
 }
+
+typedef struct {
+    stab_foreach_fn fn;
+    void *ctx;
+} foreach_convert;
+
+static void convert_foreach_fn(htab_key_t key, htab_value_t value, void *ctx) {
+    (void)key;
+    const foreach_convert *a = ctx;
+    a->fn(value, a->ctx);
+}
+
+void stab_foreach_func(const stab *st, stab_foreach_fn fn, void *ctx) {
+    assert(st != NULL && fn != NULL);
+    foreach_convert a = {.fn = fn, .ctx = ctx};
+    htab_foreach(st->funcs, convert_foreach_fn, &a);
+}
