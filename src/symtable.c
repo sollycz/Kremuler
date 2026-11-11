@@ -100,6 +100,130 @@ static char *str_copy(const char *s) {
     return t;
 }
 
+static bool str_eq(htab_key_t a, htab_key_t b) {
+    const char *s1 = a;
+    const char *s2 = b;
+    int res = strcmp(s1, s2);
+    return res == 0;
+}
+
+// copies param list from src to dst, return true if sucessfull, otherwise false
+static bool copy_param_list(stab_param_list *dst, const stab_param_list *src) {
+    if (src->count == 0) {
+        return true;
+    }
+
+    dst->params = calloc(src->count, sizeof *dst->params);
+    if (!dst->params) {
+        return false;
+    }
+    dst->count = src->count;
+
+    for (stab_size_t i = 0; i < src->count; i++) {
+        dst->params[i].type = src->params[i].type;
+        dst->params[i].name = str_copy(src->params[i].name);
+        if (!dst->params[i].name) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// copies every param list using copy_param_list, return true if sucessfull, otherwise false
+static bool copy_all_param_lists(stab_func *f, const stab_param_list *param_lists, stab_size_t list_count) {
+    if (list_count == 0) {
+        return true;
+    }
+
+    f->param_lists = calloc(list_count, sizeof *f->param_lists);
+    if (!f->param_lists) {
+        return false;
+    }
+    f->list_count = list_count;
+
+    for (stab_size_t i = 0; i < list_count; i++) {
+        if (!copy_param_list(&f->param_lists[i], &param_lists[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+stab_func *stab_add_func(stab *st,
+                         const char *name,
+                         const stab_param_list *param_lists,
+                         stab_size_t list_count,
+                         stab_type_t ret_type,
+                         bool ret_explicit,
+                         const stab_param *receiver,
+                         stab_res_t *res) {
+
+    stab_func *f = calloc(1, sizeof *f);
+    if (!f) {
+        *res = ST_NOMEM;
+        return NULL;
+    }
+
+    f->ret_type = ret_type;
+    f->ret_explicit = ret_explicit;
+    if (ret_explicit) {
+        f->infer = INFER_DONE;
+    } else {
+        f->infer = INFER_NONE;
+    }
+    f->is_method = receiver != NULL;
+
+    f->name = str_copy(name);
+    if (!f->name) {
+        value_free_fn(f);
+        *res = ST_NOMEM;
+        return NULL;
+    }
+
+    if (!copy_all_param_lists(f, param_lists, list_count)) {
+        value_free_fn(f);
+        *res = ST_NOMEM;
+        return NULL;
+    }
+
+    if (receiver) {
+        f->receiver.name = str_copy(receiver->name);
+        if (!f->receiver.name) {
+            value_free_fn(f);
+            *res = ST_NOMEM;
+            return NULL;
+        }
+        f->receiver.type = receiver->type;
+    }
+
+    stab_func_key *key = malloc(sizeof *key);
+    if (!key) {
+        value_free_fn(f);
+        *res = ST_NOMEM;
+        return NULL;
+    }
+    key->name = f->name;
+    key->is_method = f->is_method;
+    key->receiver_type = f->receiver.type;
+
+    htab_res_t hi = htab_insert(st->funcs, key, f);
+    if (hi != HTAB_OK) {
+        free(key);
+        value_free_fn(f);
+        if (hi == HTAB_EXISTS) {
+            *res = ST_REDEFINED;
+            return NULL;
+        }
+        *res = ST_NOMEM;
+        return NULL;
+    }
+
+    *res = ST_OK;
+    return f;
+}
+
 static const stab_func BUILTINS[] = {
     {.name = "print",
      .builtin = BI_PRINT,
