@@ -115,3 +115,84 @@ static bool token_to_symbol(TokenType type, bool needs_operand, PrecedenceSymbol
             return false;
     }
 }
+
+static bool is_terminal(const StackItem *item, PrecedenceSymbol symbol)
+{
+    return item->type == STACK_TERMINAL && item->symbol == symbol;
+}
+
+static bool is_valid_reduction(const PrecedenceStack *stack)
+{
+    size_t boundary;
+
+    if (stack_take_top_boundary(stack, &boundary) != true) {
+        return false;
+    }
+
+    size_t count = stack->length - boundary - 1;
+    const StackItem *first = &stack->items[boundary + 1];
+
+    switch (count) {
+        case 1:
+            return (is_terminal(first, SYMBOL_OPERAND));
+
+        case 2: {
+            const StackItem *second = &stack->items[boundary + 2];
+
+            if (is_terminal(first, SYMBOL_UNARY_PLUS)  || 
+                is_terminal(first, SYMBOL_UNARY_MINUS) || 
+                is_terminal(first, SYMBOL_NOT)) {
+                if (second->type == STACK_EXPRESSION) {
+                    return true;
+                }
+                return false;
+            }
+
+            else if (is_terminal(first, SYMBOL_LEFT_PARENTHESIS) && is_terminal(second, SYMBOL_RIGHT_PARENTHESIS)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        case 3: {
+            const StackItem *second = &stack->items[boundary + 2];
+            const StackItem *third = &stack->items[boundary + 3];
+
+            if (first->type == STACK_EXPRESSION) {
+                if (second->type == STACK_TERMINAL && (
+                    is_terminal(second, SYMBOL_PLUS) ||
+                    is_terminal(second, SYMBOL_MINUS) ||
+                    is_terminal(second, SYMBOL_MULTIPLY) ||
+                    is_terminal(second, SYMBOL_DIVISION) ||
+                    is_terminal(second, SYMBOL_LESS_THAN) ||
+                    is_terminal(second, SYMBOL_LESS_OR_EQUAL_THAN) ||
+                    is_terminal(second, SYMBOL_GREATER_THAN) ||
+                    is_terminal(second, SYMBOL_GREATER_OR_EQUAL_THAN) ||
+                    is_terminal(second, SYMBOL_EQUAL) ||
+                    is_terminal(second, SYMBOL_NOT_EQUAL) ||
+                    is_terminal(second, SYMBOL_AND) ||
+                    is_terminal(second, SYMBOL_OR))) {
+
+                    if (third->type == STACK_EXPRESSION) {
+                        return true;
+                    }
+                    return false;
+                }
+                return false;
+            }
+
+            if (is_terminal(first, SYMBOL_LEFT_PARENTHESIS)) {
+                if (second->type == STACK_EXPRESSION) {
+                    return is_terminal(third, SYMBOL_RIGHT_PARENTHESIS);
+                }
+                return false;
+            }
+
+            return false;
+        }
+
+        default:
+            return false;
+    }
+}
