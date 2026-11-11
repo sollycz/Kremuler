@@ -7,6 +7,10 @@ typedef struct stab stab;
 
 typedef unsigned long stab_size_t;
 
+typedef struct stab_func stab_func;
+
+typedef void (*stab_foreach_fn)(stab_func *fn, void *ctx);
+
 typedef enum {
     TYPE_UNKNOWN, // unknown type, should be derived later
     TYPE_INT,
@@ -60,7 +64,7 @@ typedef struct {
     stab_size_t count;
 } stab_param_list;
 
-typedef struct {
+struct stab_func {
     const char *name;
     stab_param_list *param_lists;
     stab_size_t list_count;
@@ -74,7 +78,7 @@ typedef struct {
     stab_infer_t infer;
     bool is_method;
     stab_param receiver; // EXTKW extension (only for is_method = true)
-} stab_func;
+};
 
 // creates new symbol table, otherwise returns null
 stab *stab_new(void);
@@ -128,5 +132,9 @@ stab_var *stab_create_temp_var(stab *st, stab_type_t type);
 
 // finds var by name, otherwise null
 stab_var *stab_find_var(const stab *st, const char *name);
+
+// runs stab_foreach_fn for every function / method
+// st and fn cannot be null
+void stab_foreach_func(const stab *st, stab_foreach_fn fn, void *ctx);
 
 #endif // SYMTABLE_H
