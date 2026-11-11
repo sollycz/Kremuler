@@ -371,3 +371,84 @@ void stab_free(stab *st) {
 
     free(st);
 }
+
+stab_res_t stab_set_main(stab *st, stab_func *fn) {
+    assert(st != NULL);
+    if (st->main != NULL) {
+        return ST_REDEFINED;
+    }
+
+    st->main = fn;
+    fn->is_main = true;
+    return ST_OK;
+}
+
+stab_func *stab_main(const stab *st) {
+    assert(st != NULL);
+    return st->main;
+}
+
+// used for: while for etc. inherits the function from its parent
+stab_res_t stab_enter_scope(stab *st) {
+    assert(st != NULL && st->top != NULL);
+    scope *s = malloc(sizeof *s);
+    if (!s) {
+        return ST_NOMEM;
+    }
+
+    s->vars = htab_init(INITIAL_HTAB_CAPACITY, str_hash, str_eq, NULL, NULL);
+    if (!s->vars) {
+        free(s);
+        return ST_NOMEM;
+    }
+    s->func = st->top->func;
+    s->parent = st->top;
+    st->top = s;
+    return ST_OK;
+}
+
+stab_res_t stab_enter_func(stab *st, stab_func *fn) {
+    assert(st != NULL && fn != NULL);
+    scope *s = malloc(sizeof *s);
+    if (!s) {
+        return ST_NOMEM;
+    }
+
+    s->vars = htab_init(INITIAL_HTAB_CAPACITY, str_hash, str_eq, NULL, NULL);
+    if (!s->vars) {
+        free(s);
+        return ST_NOMEM;
+    }
+    s->func = fn;
+    s->parent = st->top;
+    st->top = s;
+    return ST_OK;
+}
+
+void stab_leave_scope(stab *st) {
+    if (!st || !st->top) {
+        return;
+    }
+    scope *s = st->top;
+    st->top = s->parent;
+    htab_destroy(s->vars);
+    free(s);
+}
+
+void stab_leave_func(stab *st) {
+    if (!st || !st->top) {
+        return;
+    }
+    stab_func *fn = st->top->func;
+    while (st->top && st->top->func == fn) {
+        stab_leave_scope(st);
+    }
+}
+
+stab_func *stab_current_func(const stab *st) {
+    if (!st || !st->top) {
+        return NULL;
+    }
+
+    return st->top->func;
+}
