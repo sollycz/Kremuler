@@ -452,3 +452,103 @@ stab_func *stab_current_func(const stab *st) {
 
     return st->top->func;
 }
+
+static stab_var *add_local(stab_func *f, const char *name, stab_type_t type, bool is_mutable) {
+    stab_var *v = malloc(sizeof *v);
+    if (!v) {
+        return NULL;
+    }
+
+    // name can be null for temp var
+    v->name = str_copy(name);
+    if (name && !v->name) {
+        free(v);
+        return NULL;
+    }
+
+    v->type = type;
+    v->is_mutable = is_mutable;
+    v->id = f->locals_count;
+
+    stab_var **tmp = realloc(f->locals, (f->locals_count + 1) * sizeof *tmp);
+    if (!tmp) {
+        free((void *)v->name);
+        free(v);
+        return NULL;
+    }
+
+    f->locals = tmp;
+    f->locals[f->locals_count++] = v;
+    return v;
+}
+
+stab_var *stab_declare_var(stab *st, const char *name, stab_type_t type, bool is_mutable, stab_res_t *res) {
+    assert(st != NULL && st->top != NULL && st->top->func != NULL);
+
+    stab_func *f = st->top->func;
+
+    if (htab_get(st->top->vars, name, NULL)) {
+        *res = ST_REDEFINED;
+        return NULL;
+    }
+
+    stab_var *v = add_local(f, name, type, is_mutable);
+    if (!v) {
+        *res = ST_NOMEM;
+        return NULL;
+    }
+
+    htab_res_t rh = htab_insert(st->top->vars, v->name, v);
+
+    if (rh == HTAB_OK) {
+        *res = ST_OK;
+        return v;
+    }
+
+    f->locals_count--;
+    free((void *)v->name);
+    free(v);
+    *res = ST_NOMEM;
+    return NULL;
+}
+
+stab_var *stab_create_temp_var(stab *st, stab_type_t type) {
+    assert(st != NULL && st->top != NULL && st->top->func != NULL);
+    return add_local(st->top->func, NULL, type, true);
+}
+
+stab_var *stab_find_var(const stab *st, const char *name) {
+    assert(st != NULL);
+    for (const scope *s = st->top; s != NULL; s = s->parent) {
+        htab_value_t out;
+        if (htab_get(s->vars, name, &out)) {
+            return out;
+        }
+    }
+    return NULL;
+}
+
+stab_func *stab_find_func(const stab *st, const char *name, const stab_type_t *receiver) {
+    assert(st != NULL && name != NULL);
+
+    stab_func_key key = {
+        .name = name,
+        .is_method = receiver != NULL,
+        .receiver_type = receiver ? *receiver : TYPE_UNKNOWN,
+    };
+
+    htab_value_t out;
+    if (htab_get(st->funcs, &key, &out)) {
+        return out;
+    }
+
+    // not sure if needed
+    if (receiver && *receiver != TYPE_ANY) {
+        key.receiver_type = TYPE_ANY;
+        if (htab_get(st->funcs, &key, &out)) {
+            return out;
+        }
+    }
+
+    return NULL;
+}
