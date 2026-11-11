@@ -1,5 +1,6 @@
 #include "symtable.h"
 #include "hashtable.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,12 +9,12 @@
 typedef struct scope {
     htab *vars;
     struct scope *parent;
+    stab_func *func;
 } scope;
 
 struct stab {
     htab *funcs;
     stab_func *main;
-    stab_func *cur_func;
     scope *top;
 };
 
@@ -47,7 +48,7 @@ static htab_size_t str_hash(htab_key_t key) {
     return djb2(key);
 }
 
-bool eq_fn(htab_key_t a, htab_key_t b) {
+static bool eq_fn(htab_key_t a, htab_key_t b) {
     const stab_func_key *x = a;
     const stab_func_key *y = b;
     if (strcmp(x->name, y->name) != 0) {
@@ -62,7 +63,7 @@ bool eq_fn(htab_key_t a, htab_key_t b) {
     return true;
 }
 
-void value_free_fn(void *ptr) {
+static void value_free_fn(void *ptr) {
     stab_func *f = ptr;
     if (!f) {
         return;
@@ -340,7 +341,6 @@ stab *stab_new() {
     }
 
     st->main = NULL;
-    st->cur_func = NULL;
     st->top = NULL;
 
     st->funcs = htab_init(INITIAL_HTAB_CAPACITY, func_hash, eq_fn, free, value_free_fn);
