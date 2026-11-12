@@ -58,7 +58,8 @@ typedef enum {
     STATE_STRING_SECOND_QUOTE,
     STATE_STRING_MULTILINE_BODY,
     STATE_STRING_MULTILINE_FIRST_QUOTE,
-    STATE_STRING_MULTILINE_SECOND_QUOTE
+    STATE_STRING_MULTILINE_SECOND_QUOTE,
+    STATE_STRING_MULTILINE_CLOSING_QUOTES
 } State;
 
 static TokenType keyword_or_id(const char *text) {
@@ -1040,9 +1041,8 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                     return SCANNER_LEXICAL_ERROR;
                     }
                 if (c == '"') {
-                    token->type = TOK_STRING_LITERAL;
-                    token->data.str_val = buffer.data;
-                    return SCANNER_OK;
+                    state = STATE_STRING_MULTILINE_CLOSING_QUOTES;
+                    break;
                 }
 
                 ScannerErrorCode result = buffer_append(&buffer, '"');
@@ -1064,6 +1064,26 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_STRING_MULTILINE_BODY;
                 break;
             }
+
+            case STATE_STRING_MULTILINE_CLOSING_QUOTES:
+                c = scanner_getchar();
+                while (c == '"') {
+                    ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                    if (result != SCANNER_OK) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+                    c = scanner_getchar();
+                }
+
+                if (c != EOF) {
+                    scanner_ungetc(c);
+                }
+
+                token->type = TOK_STRING_LITERAL;
+                token->data.str_val = buffer.data;
+                return SCANNER_OK;
+
 
             case STATE_ONE_LINE_COMMENT:
                 c = scanner_getchar();
