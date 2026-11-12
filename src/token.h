@@ -1,0 +1,78 @@
+/**
+ * @file token.h
+ * @brief Token types and data structures for the IFJ26 compiler.
+ * @author David Zoblivý (xzoblid00)
+ */
+
+#ifndef TOKEN_H
+#define TOKEN_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef enum token_type {
+    TOK_KW_VAR,
+    TOK_KW_DEF,
+    TOK_KW_DO,
+    TOK_KW_DOUBLE,
+    TOK_KW_ELSE,
+    TOK_KW_IF,
+    TOK_KW_IMPORT,
+    TOK_KW_INT,
+    TOK_KW_RETURN,
+    TOK_KW_STRING,
+    TOK_KW_THEN,
+    TOK_KW_UNIT,
+    TOK_KW_VAL,
+    TOK_KW_WHILE,
+    TOK_KW_BOOLEAN,
+    TOK_KW_FOR,
+    TOK_KW_EXTENSION,
+    TOK_ID,
+    TOK_LEFT_PARENTHESIS,
+    TOK_RIGHT_PARENTHESIS,
+    TOK_ASSIGN,
+    TOK_PLUS,
+    TOK_MINUS,
+    TOK_DIVISION,
+    TOK_MULTIPLY,
+    TOK_EQUAL,
+    TOK_NOT_EQUAL,
+    TOK_GREATER_THAN,
+    TOK_GREATER_OR_EQUAL_THAN,
+    TOK_LESS_THAN,
+    TOK_LESS_OR_EQUAL_THAN,
+    TOK_COLON,
+    TOK_SEMICOLON,
+    TOK_COMMA,
+    TOK_DOT,
+    TOK_AT,
+    TOK_NOT,
+    TOK_OR,
+    TOK_AND,
+    TOK_TRUE,
+    TOK_FALSE,
+    TOK_EOL,
+    TOK_EOF,
+    TOK_INT_LITERAL,
+    TOK_DOUBLE_LITERAL,
+    TOK_STRING_LITERAL,
+    TOK_CONTROL_ARROW
+} TokenType;
+
+typedef union token_data {
+    int64_t num_int_val;
+    double num_float_val;
+    char *str_val;
+} TokenData;
+
+typedef struct token {
+    TokenType type;
+    TokenData data;
+    unsigned int indent; // počet mezer od začátku
+    unsigned int line; // pozice řádek od 1
+    unsigned int column; // pozice sloupec od 1
+    bool lf_before;
+} Token;
+
+#endif
