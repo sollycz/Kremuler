@@ -2,7 +2,6 @@
  * @file hashtable.c
  * @brief Implementation of Hashtable ADT
  * @author Filip Radulovič (xradulf00)
- * @todo fix comments
  */
 
 #include "hashtable.h"
@@ -13,8 +12,8 @@
 #include <stdlib.h>
 
 // out of a 100
-#define HTAB_LOAD_FACTOR 75
-#define HTAB_DELETED_LOAD_FACTOR 25
+#define HTAB_LOAD_FACTOR 75         // grow when used slots reach this
+#define HTAB_DELETED_LOAD_FACTOR 25 // grow / remove (rehash) to restore capacity
 
 typedef enum { SLOT_EMPTY, SLOT_USED, SLOT_DELETED } slot_state_t;
 
@@ -36,7 +35,8 @@ struct htab {
     htab_free_fn value_free;
 };
 
-htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free) {
+htab *htab_init(
+    htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free) {
     assert(hash != NULL);
     assert(eq != NULL);
 

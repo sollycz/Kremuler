@@ -2,7 +2,6 @@
  * @file hashtable.h
  * @brief Header file for Hashtable ADT
  * @author Filip Radulovič (xradulf00)
- * @todo fix comments
  */
 
 #ifndef HASHTABLE_H
@@ -33,7 +32,8 @@ typedef enum {
 // creates a table. initial capacity below 8 is raised to 8.
 // hash and eq fns cannot be null, key_free and value_free can.
 // returns NULL if the table could not be created.
-htab *htab_init(htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free);
+htab *htab_init(
+    htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free);
 
 // destroys the table.
 // frees every value and key if key_free and value_free fns were provided.
