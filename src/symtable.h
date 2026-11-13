@@ -2,7 +2,7 @@
  * @file symtable.h
  * @brief Header file for Symtable ADT
  * @author Filip Radulovič (xradulf00)
- * @todo fix comments
+ * @todo use types from types.h
  */
 
 #ifndef SYMTABLE_H
@@ -52,15 +52,17 @@ typedef enum {
     BI_M_LENGTH
 } stab_builtin_t;
 
+// variable record, owned by function.locals
 typedef struct {
     const char *name;
     stab_type_t type;
-    bool is_mutable; // error 7 (tried writting into unwriteable var)
+    bool is_mutable; // error 7
     unsigned id;
 } stab_var;
 
 typedef enum { INFER_NONE, INFER_RUNNING, INFER_DONE } stab_infer_t;
 
+// parameter record, owned by function record
 typedef struct {
     const char *name;
     stab_type_t type;
@@ -71,6 +73,9 @@ typedef struct {
     stab_size_t count;
 } stab_param_list;
 
+// function / method record
+// name, is_method and receiver.type are used as key for hashtable
+// changing them will make the record non accessible
 struct stab_func {
     const char *name;
     stab_param_list *param_lists;
@@ -80,7 +85,7 @@ struct stab_func {
     bool is_builtin;        // built in fns for code gen later
     stab_builtin_t builtin; // type of built in function (only for is_builtin = true)
     bool is_main;
-    stab_var **locals;
+    stab_var **locals; // used for code gen declarations
     stab_size_t locals_count;
     stab_infer_t infer;
     bool is_method;
@@ -88,14 +93,16 @@ struct stab_func {
 };
 
 // creates new symbol table, otherwise returns null
+// builtin functions are already registered
 stab *stab_new(void);
 
-// frees symbol table
+// frees symbol table and everything in it
 void stab_free(stab *st);
 
 // adds function or method to symtable, returns stab_func or null
 // receiver == null -> normal function
 // specific reason for failure can be found in *res
+// redefining a function, even a builtin one, will result into ST_REDEFINED
 stab_func *stab_add_func(stab *st,
                          const char *name,
                          const stab_param_list *param_lists,
@@ -107,27 +114,33 @@ stab_func *stab_add_func(stab *st,
 
 // finds function or method by name, otherwise returns null
 // receiver == null -> normal function
+// if no function with given receiver exists, falls back to receiver.type TYPE_ANY
 stab_func *stab_find_func(const stab *st, const char *name, const stab_type_t *receiver);
 
-// returns the main fn
+// returns the main fn or null, if main was not set
 stab_func *stab_main(const stab *st);
 
-// declares function as main and checks for a redefined main (error)
+// declares function as main and checks for a redefinition
 stab_res_t stab_set_main(stab *st, stab_func *fn);
 
 // enters new scope (while, if else etc.) and return result type
 stab_res_t stab_enter_scope(stab *st);
 
 // leaves scope
+// declared variables can no longer be found by name and are kept only in function.locals
 void stab_leave_scope(stab *st);
 
 // enters function or method scope and returns result type
+// does NOT delclare parameters, use stab_declare_var after
+// scopes are forgotten after leaving them but are retained in locals for codegen
+// re-entering the same fn will lead to redefined vars in code gen later
 stab_res_t stab_enter_func(stab *st, stab_func *fn);
 
-// leaves function scope
+// leaves function scope including any scopes open inside it
+// declared variables can no longer be found by name and are kept only in function.locals
 void stab_leave_func(stab *st);
 
-// returns current function scope
+// returns current function scope or null outside any function
 stab_func *stab_current_func(const stab *st);
 
 // declares var in current scope
@@ -135,9 +148,11 @@ stab_func *stab_current_func(const stab *st);
 stab_var *stab_declare_var(stab *st, const char *name, stab_type_t type, bool is_mutable, stab_res_t *res);
 
 // creates new temporary var, used for for while if else etc., returns the var or null
+// this variable is only found in function.locals
 stab_var *stab_create_temp_var(stab *st, stab_type_t type);
 
 // finds var by name, otherwise null
+// searches from current scope outwards while staying inside of the current function
 stab_var *stab_find_var(const stab *st, const char *name);
 
 // runs stab_foreach_fn for every function / method

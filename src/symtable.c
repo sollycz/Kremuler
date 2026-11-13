@@ -2,7 +2,6 @@
  * @file symtable.c
  * @brief Implementation of Symtable ADT
  * @author Filip Radulovič (xradulf00)
- * @todo fix comments
  */
 
 #include "symtable.h"
@@ -13,6 +12,7 @@
 
 #define INITIAL_HTAB_CAPACITY 8
 
+// entry of the scope stack, doesnt own anything (owned by function.locals)
 typedef struct scope {
     htab *vars;
     struct scope *parent;
@@ -25,12 +25,15 @@ struct stab {
     scope *top;
 };
 
+// key for function table
+// name is owned by function.name
 typedef struct {
     const char *name;
     bool is_method;
     stab_type_t receiver_type;
 } stab_func_key;
 
+// djb2 hash function used for variables and function names
 static htab_size_t djb2(const unsigned char *s) {
     htab_size_t hash = 5381;
     int c;
@@ -41,6 +44,8 @@ static htab_size_t djb2(const unsigned char *s) {
     return hash;
 }
 
+// hash function for stab_func_key
+// received type is only mixed in for methods
 static htab_size_t func_hash(htab_key_t key) {
     const stab_func_key *k = key;
     htab_size_t hash = djb2((const unsigned char *)k->name);
@@ -51,10 +56,12 @@ static htab_size_t func_hash(htab_key_t key) {
     return hash;
 }
 
+// wrapper for string hash
 static htab_size_t str_hash(htab_key_t key) {
     return djb2(key);
 }
 
+// checks if two stab_funcs_key are equal
 static bool eq_fn(htab_key_t a, htab_key_t b) {
     const stab_func_key *x = a;
     const stab_func_key *y = b;
@@ -70,6 +77,8 @@ static bool eq_fn(htab_key_t a, htab_key_t b) {
     return true;
 }
 
+// value free function for function table
+// frees all values
 static void value_free_fn(void *ptr) {
     stab_func *f = ptr;
     if (!f) {
@@ -95,6 +104,7 @@ static void value_free_fn(void *ptr) {
     free(f);
 }
 
+// strdup (c11 has problems with strdup, this replaces it)
 static char *str_copy(const char *s) {
     if (!s) {
         return NULL;
@@ -108,6 +118,7 @@ static char *str_copy(const char *s) {
     return t;
 }
 
+// checks if two strings are equal
 static bool str_eq(htab_key_t a, htab_key_t b) {
     const char *s1 = a;
     const char *s2 = b;
@@ -115,7 +126,7 @@ static bool str_eq(htab_key_t a, htab_key_t b) {
     return res == 0;
 }
 
-// copies param list from src to dst, return true if sucessfull, otherwise false
+// copies param list from src to dst, return true if sucessful, otherwise false
 static bool copy_param_list(stab_param_list *dst, const stab_param_list *src) {
     if (src->count == 0) {
         return true;
@@ -311,7 +322,7 @@ static const stab_func BUILTINS[] = {
      .receiver = {"value", TYPE_STRING}},
     {.name = NULL}};
 
-// return false if failed
+// return false on ST_NOMEM error
 static bool register_builtin_fns(stab *st) {
     for (stab_size_t i = 0; BUILTINS[i].name != NULL; i++) {
 
@@ -460,6 +471,7 @@ stab_func *stab_current_func(const stab *st) {
     return st->top->func;
 }
 
+// allocates variable and adds it to function.locals
 static stab_var *add_local(stab_func *f, const char *name, stab_type_t type, bool is_mutable) {
     stab_var *v = malloc(sizeof *v);
     if (!v) {
@@ -526,7 +538,7 @@ stab_var *stab_create_temp_var(stab *st, stab_type_t type) {
 
 stab_var *stab_find_var(const stab *st, const char *name) {
     assert(st != NULL);
-    for (const scope *s = st->top; s != NULL; s = s->parent) {
+    for (const scope *s = st->top; s != NULL && s->func == st->top->func; s = s->parent) {
         htab_value_t out;
         if (htab_get(s->vars, name, &out)) {
             return out;
@@ -549,7 +561,6 @@ stab_func *stab_find_func(const stab *st, const char *name, const stab_type_t *r
         return out;
     }
 
-    // not sure if needed
     if (receiver && *receiver != TYPE_ANY) {
         key.receiver_type = TYPE_ANY;
         if (htab_get(st->funcs, &key, &out)) {
@@ -560,11 +571,13 @@ stab_func *stab_find_func(const stab *st, const char *name, const stab_type_t *r
     return NULL;
 }
 
+// adapting struct for typedef used by symtable and hashtable
 typedef struct {
     stab_foreach_fn fn;
     void *ctx;
 } foreach_convert;
 
+// adapting function for typedef used by symtable and hashtable
 static void convert_foreach_fn(htab_key_t key, htab_value_t value, void *ctx) {
     (void)key;
     const foreach_convert *a = ctx;
