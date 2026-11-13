@@ -2,8 +2,6 @@
  * @file scanner.c
  * @brief Lexical analyzer for IFJ26 to IFJcode26
  * @author David Zoblivý (xzoblid00)
- * @todo VALMEM extension
- * @todo INTERPOLATEDS
  * @todo add comments
  */
 
@@ -62,6 +60,19 @@ typedef enum {
     STATE_STRING_MULTILINE_CLOSING_QUOTES
 } State;
 
+typedef enum {
+    INTERPOLATED_MODE_NONE,
+    INTERPOLATED_MODE_SINGLE_LINE,
+    INTERPOLATED_MODE_MULTILINE,
+    INTERPOLATED_MODE_ENDED
+} InterpolatedMode;
+
+typedef struct interpolation_state {
+    InterpolatedMode mode;
+    bool reading_expression;
+    struct interpolation_state *previous;
+} InterpolationState;
+
 static TokenType keyword_or_id(const char *text) {
     if (strcmp(text, "var") == 0)       return TOK_KW_VAR;
     if (strcmp(text, "def") == 0)       return TOK_KW_DEF;
@@ -100,6 +111,7 @@ static bool tab_in_indent = false;
 static unsigned int current_indent = 0;
 static bool trailing_comma_allowed = false;
 static bool processed_dot = false;
+static InterpolationState current_interpolation = {0};
 
 static int scanner_getchar(void) {
     last_line = next_line;
@@ -133,12 +145,227 @@ static int scanner_ungetc(int c) {
     return result;
 }
 
+ScannerErrorCode interpolation_push(void) {
+    InterpolationState *stack_node = malloc(sizeof(*stack_node));
+    if (stack_node == NULL) {
+        return SCANNER_MEMORY_ERROR;
+    }
+
+    *stack_node = current_interpolation;
+    current_interpolation.previous = stack_node;
+
+    return SCANNER_OK;
+}
+
+ScannerErrorCode interpolation_pop(void) {
+    if (current_interpolation.previous == NULL) {
+        return SCANNER_INVALID_STATE_ERROR;
+    }
+
+    InterpolationState *stack_node = current_interpolation.previous;
+    current_interpolation = *stack_node;
+
+    free(stack_node);
+    return SCANNER_OK;
+}
+
+void interpolation_free(void) {
+    while (current_interpolation.previous != NULL) {
+        InterpolationState *stack_node = current_interpolation.previous;
+        current_interpolation.previous = stack_node->previous;
+
+        free(stack_node);
+    }
+
+    current_interpolation.mode = INTERPOLATED_MODE_NONE;
+    current_interpolation.reading_expression = false;
+}
+
+static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
+    if (current_interpolation.mode == INTERPOLATED_MODE_ENDED) {
+        token->type = TOK_INTERPOLATED_END;
+        token->line = next_line;
+        token->column = next_column - 3;
+        return interpolation_pop();
+    }
+
+    StringBuffer buffer = {0};
+    ScannerErrorCode result = buffer_init(&buffer);
+    if (result != SCANNER_OK) {
+        return result;
+    }
+
+    int c = scanner_getchar();
+    token->line = last_line;
+    token->column = last_column;
+
+    while (1) {
+        if (c == '$' || c == '"') {
+            break;
+        }
+
+        if (c == '\\' && current_interpolation.mode == INTERPOLATED_MODE_SINGLE_LINE) {
+            break;
+        }
+
+        if (c == EOF || (c == '\n' && current_interpolation.mode == INTERPOLATED_MODE_SINGLE_LINE)) {
+            buffer_free(&buffer);
+            return SCANNER_LEXICAL_ERROR;
+        }
+
+        result = buffer_append(&buffer, (char)c);
+        if (result != SCANNER_OK) {
+            buffer_free(&buffer);
+            return result;
+        }
+
+        c = scanner_getchar();
+    }
+
+    if ((c == '"' || c == '$') && buffer.length > 0) {
+        scanner_ungetc(c);
+
+        token->type = TOK_STRING_LITERAL;
+        token->data.str_val = buffer.data;
+
+        return SCANNER_OK;
+    }
+
+    if (c == '"' && buffer.length == 0 && current_interpolation.mode == INTERPOLATED_MODE_SINGLE_LINE) {
+        buffer_free(&buffer);
+
+        token->type = TOK_INTERPOLATED_END;
+
+        return interpolation_pop();
+    }
+
+    if (c == '"' && current_interpolation.mode == INTERPOLATED_MODE_MULTILINE) {
+        while (c == '"') {
+            result = buffer_append(&buffer, (char)c);
+            if (result != SCANNER_OK) {
+                buffer_free(&buffer);
+                return result;
+            }
+
+            c = scanner_getchar();
+        }
+
+        scanner_ungetc(c);
+
+        if (buffer.length >= 3) {
+            buffer.length -= 3;
+            buffer.data[buffer.length] = '\0';
+            current_interpolation.mode = INTERPOLATED_MODE_ENDED;
+        }
+        else if (c == EOF) {
+            buffer_free(&buffer);
+            return SCANNER_LEXICAL_ERROR;
+        }
+
+        token->type = TOK_STRING_LITERAL;
+        token->data.str_val = buffer.data;
+
+        return SCANNER_OK;
+    }
+
+    if (c == '$') {
+        c = scanner_getchar();
+
+        if (c == '$') {
+            result = buffer_append(&buffer, (char)c);
+            if (result != SCANNER_OK) {
+                buffer_free(&buffer);
+                return result;
+            }
+
+            token->type = TOK_STRING_LITERAL;
+            token->data.str_val = buffer.data;
+            return SCANNER_OK;
+        }
+
+        if (c == '{') {
+            buffer_free(&buffer);
+
+            token->type = TOK_INTERPOLATION_BEGIN;
+            current_interpolation.reading_expression = true;
+
+            return SCANNER_OK;
+        }
+
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
+            ScannerErrorCode result = buffer_append(&buffer, (char)c);
+            if (result != SCANNER_OK) {
+                buffer_free(&buffer);
+                return result;
+            }
+
+            c = scanner_getchar();
+            while ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9')) {
+                ScannerErrorCode result = buffer_append(&buffer, (char)c);
+                if (result != SCANNER_OK) {
+                    buffer_free(&buffer);
+                    return result;
+                }
+                c = scanner_getchar();
+            }
+
+            scanner_ungetc(c);
+
+            if (buffer.length == 1 && buffer.data[0] == '_') {
+                buffer_free(&buffer);
+                return SCANNER_LEXICAL_ERROR;
+            }
+
+            token->type = keyword_or_id(buffer.data);
+            if (token->type == TOK_ID) {
+                token->data.str_val = buffer.data;
+            }
+            else {
+                buffer_free(&buffer);
+            }
+            return SCANNER_OK;
+        }
+
+        buffer_free(&buffer);
+        return SCANNER_LEXICAL_ERROR;
+    }
+    else if (c == '\\') {
+        c = scanner_getchar();
+        if (c == 'n') {
+            c = '\n';
+        }
+        else if (c == 'r') {
+            c = '\r';
+        }
+        else if (c == 't') {
+            c = '\t';
+        }
+        else if (c != '"' && c != '\\') {
+            buffer_free(&buffer);
+            return SCANNER_LEXICAL_ERROR;
+        }
+
+        result = buffer_append(&buffer, (char)c);
+        if (result != SCANNER_OK) {
+            buffer_free(&buffer);
+            return result;
+        }
+
+        token->type = TOK_STRING_LITERAL;
+        token->data.str_val = buffer.data;
+        return SCANNER_OK;
+    }
+
+    buffer_free(&buffer);
+    return SCANNER_INVALID_STATE_ERROR;
+}
+
 static ScannerErrorCode scanner_read_token(Token *token) {
     if (processed_dot == true) {
         token->type = TOK_DOT;
         token->line = next_line;
         token->column = next_column - 1;
-        
+
         processed_dot = false;
         
         return SCANNER_OK;
@@ -147,6 +374,8 @@ static ScannerErrorCode scanner_read_token(Token *token) {
     int c = scanner_getchar();
     State state = STATE_START;
     StringBuffer buffer = {0};
+
+    bool string_has_interpolated_prefix = false;
 
     while (1) {
         switch (state) {
@@ -334,6 +563,12 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                     break;
                 }
 
+                if (c == '}' && current_interpolation.mode != INTERPOLATED_MODE_NONE && current_interpolation.reading_expression == true) {
+                    token->type = TOK_INTERPOLATION_END;
+                    current_interpolation.reading_expression = false;
+                    return SCANNER_OK;
+                }
+
                 return SCANNER_LEXICAL_ERROR;
 
             case STATE_PLUS:
@@ -492,6 +727,17 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
             case STATE_IDENTIFIER:
                 c = scanner_getchar();
+
+                if (buffer.data[0] == 's' && c == '"' && buffer.length == 1) {
+                    string_has_interpolated_prefix = true;
+
+                    buffer.data[0] = '\0';
+                    buffer.length = 0;
+
+                    state = STATE_STRING_FIRST_QUOTE;
+                    break;
+                }
+
                 if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9')) {
                     ScannerErrorCode result = buffer_append(&buffer, (char)c);
                     if (result != SCANNER_OK) {
@@ -904,6 +1150,24 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                     state = STATE_STRING_SECOND_QUOTE;
                     break;
                 }
+
+                if (string_has_interpolated_prefix == true) {
+                    scanner_ungetc(c);
+
+                    ScannerErrorCode result = interpolation_push();
+                    if (result != SCANNER_OK) {
+                        buffer_free(&buffer);
+                        return result;
+                    }
+
+                    current_interpolation.mode = INTERPOLATED_MODE_SINGLE_LINE;
+                    current_interpolation.reading_expression = false;
+                    token->type = TOK_INTERPOLATED_BEGIN;
+
+                    buffer_free(&buffer);
+                    return SCANNER_OK;
+                }
+
                 while (c != '"') {
                     if (c == EOF || c == '\n') {
                         buffer_free(&buffer);
@@ -1007,6 +1271,20 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             case STATE_STRING_SECOND_QUOTE:
                 c = scanner_getchar();
                 if (c == '"') {
+                    if (string_has_interpolated_prefix == true) {
+                        ScannerErrorCode result = interpolation_push();
+                        if (result != SCANNER_OK) {
+                            buffer_free(&buffer);
+                            return result;
+                        }
+
+                        current_interpolation.mode = INTERPOLATED_MODE_MULTILINE;
+                        current_interpolation.reading_expression = false;
+                        token->type = TOK_INTERPOLATED_BEGIN;
+
+                        buffer_free(&buffer);
+                        return SCANNER_OK;
+                    }
                     state = STATE_STRING_MULTILINE_BODY;
                     break;
                 }
@@ -1111,7 +1389,6 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 token->type = TOK_STRING_LITERAL;
                 token->data.str_val = buffer.data;
                 return SCANNER_OK;
-
 
             case STATE_ONE_LINE_COMMENT:
                 c = scanner_getchar();
@@ -1224,37 +1501,54 @@ ScannerErrorCode scanner_get_token(Token *token) {
     token->indent = 0;
     token->lf_before = false;
 
-    ScannerErrorCode result = scanner_read_token(token);
+    ScannerErrorCode result;
+    if (current_interpolation.mode == INTERPOLATED_MODE_NONE || current_interpolation.reading_expression == true) {
+        result = scanner_read_token(token);
+    }
+    else {
+        result = scanner_read_interpolated_text(token);
+    }
 
     if (ferror(stdin) != 0) {
         if (result == SCANNER_OK && (token->type == TOK_ID || token->type == TOK_STRING_LITERAL)) {
             free(token->data.str_val);
             token->data.str_val = NULL;
         }
+        interpolation_free();
         return SCANNER_READ_ERROR;
     }
 
-    if (result == SCANNER_OK && (token->type == TOK_EOL || token->type == TOK_EOF)) {
+    if (result != SCANNER_OK) {
+        interpolation_free();
+        return result;
+    }
+
+    if (token->type == TOK_EOF && current_interpolation.reading_expression == true) {
+        interpolation_free();
+        return SCANNER_LEXICAL_ERROR;
+    }
+
+    if (token->type == TOK_EOL || token->type == TOK_EOF) {
         token->line = last_line;
         token->column = last_column;
+        return SCANNER_OK;
     }
 
-    if (result == SCANNER_OK && token->type != TOK_EOF && token->type != TOK_EOL) {
-        if (tab_in_indent) {
-            if (token->type == TOK_ID || token->type == TOK_STRING_LITERAL) {
-                free(token->data.str_val);
-                token->data.str_val = NULL;
-            }
-            return SCANNER_LEXICAL_ERROR;
+    if (tab_in_indent == true) {
+        if (token->type == TOK_ID || token->type == TOK_STRING_LITERAL) {
+            free(token->data.str_val);
+            token->data.str_val = NULL;
         }
-
-        token->lf_before = trailing_comma_allowed;
-        trailing_comma_allowed = false;
-
-        line_has_token = true;
-        reading_indentation = false;
-        token->indent = current_indent;
+        interpolation_free();
+        return SCANNER_LEXICAL_ERROR;
     }
 
-    return result;
+    token->lf_before = trailing_comma_allowed;
+    trailing_comma_allowed = false;
+
+    line_has_token = true;
+    reading_indentation = false;
+    token->indent = current_indent;
+
+    return SCANNER_OK;
 }
