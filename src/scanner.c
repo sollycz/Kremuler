@@ -45,7 +45,7 @@ typedef enum {
     STATE_DOUBLE_EXPONENT_SIGN,
     STATE_DOUBLE_EXPONENT_DIGITS,
     STATE_DOUBLE_EXPONENT_UNDERSCORE,
-    STATE_DOUBLE_AFTER_DOT,
+    STATE_NUMBER_AFTER_DOT,
     STATE_IDENTIFIER_UNDERSCORE,
     STATE_IDENTIFIER,
     STATE_EQUAL_SIGN,
@@ -99,6 +99,7 @@ static bool reading_indentation = true;
 static bool tab_in_indent = false;
 static unsigned int current_indent = 0;
 static bool trailing_comma_allowed = false;
+static bool processed_dot = false;
 
 static int scanner_getchar(void) {
     last_line = next_line;
@@ -133,6 +134,16 @@ static int scanner_ungetc(int c) {
 }
 
 static ScannerErrorCode scanner_read_token(Token *token) {
+    if (processed_dot == true) {
+        token->type = TOK_DOT;
+        token->line = next_line;
+        token->column = next_column - 1;
+        
+        processed_dot = false;
+        
+        return SCANNER_OK;
+    }
+
     int c = scanner_getchar();
     State state = STATE_START;
     StringBuffer buffer = {0};
@@ -703,7 +714,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                         buffer_free(&buffer);
                         return result;
                     }
-                    state = STATE_DOUBLE_AFTER_DOT;
+                    state = STATE_NUMBER_AFTER_DOT;
                     break;
                 }
                 if (c == 'e' || c == 'E') {
@@ -756,7 +767,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                         buffer_free(&buffer);
                         return result;
                     }
-                    state = STATE_DOUBLE_AFTER_DOT;
+                    state = STATE_NUMBER_AFTER_DOT;
                     break;
                 }
                 if (c == '_') {
@@ -781,7 +792,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 return SCANNER_OK;
 
 
-            case STATE_DOUBLE_AFTER_DOT:
+            case STATE_NUMBER_AFTER_DOT:
                 c = scanner_getchar();
                 if (c >= '0' && c <= '9') {
                     ScannerErrorCode result = buffer_append(&buffer, (char)c);
@@ -791,6 +802,23 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                     }
                     state = STATE_DOUBLE_DIGITS;
                     break;
+                }
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
+                    processed_dot = true;
+                    if (c != EOF) {
+                        scanner_ungetc(c);
+                    }
+                    buffer.length--;
+                    buffer.data[buffer.length] = '\0';
+
+                    token->type = TOK_INT_LITERAL;
+                    token->data.num_int_val = strtoll(buffer.data, NULL, 10);
+                    if (buffer.data[0] == '0' && token->data.num_int_val > 0) {
+                        buffer_free(&buffer);
+                        return SCANNER_LEXICAL_ERROR;
+                    }
+                    buffer_free(&buffer);
+                    return SCANNER_OK;
                 }
                 buffer_free(&buffer);
                 return SCANNER_LEXICAL_ERROR;
@@ -832,7 +860,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                         buffer_free(&buffer);
                         return result;
                     }
-                    state = STATE_DOUBLE_AFTER_DOT;
+                    state = STATE_NUMBER_AFTER_DOT;
                     break;
                 }
                 if (c == 'e' || c == 'E') {
