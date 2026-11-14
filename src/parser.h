@@ -9,6 +9,7 @@
 
 #include "token.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef enum ParseResult {
     PARSE_OK = 0,
@@ -21,7 +22,16 @@ typedef struct Parser {
     Token current;
     Token lookahead; // token after the current one
     bool has_lookahead;
+    unsigned int *indent_stack; // for keeping track of indentation [0] -> [0, 4] -> ...
+    size_t indent_count;
 } Parser;
+
+// initializes the parser
+// (PARSE_INTERNAL_ERROR if memory allocation fails)
+ParseResult parser_init(Parser *p);
+
+// frees the resources used by the parser
+void parser_destroy(Parser *p);
 
 // moves p->current to the next token received from the scanner
 // also frees the string of the previous token, so if you need to keep it:

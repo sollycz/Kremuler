@@ -16,6 +16,38 @@ static void token_free(Token *token) {
     }
 }
 
+// adds an indentation level onto the top of the stack
+static ParseResult indent_push(Parser *p, unsigned int indent) {
+    // add room for one more indent level
+    unsigned int *stack = realloc(p->indent_stack, (p->indent_count + 1) * sizeof(unsigned int));
+
+    if (stack == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    stack[p->indent_count] = indent;
+    p->indent_stack = stack;
+    p->indent_count++;
+
+    return PARSE_OK;
+}
+
+ParseResult parser_init(Parser *p) {
+    *p = (Parser){0};
+    return indent_push(p, 0);
+}
+
+void parser_destroy(Parser *p) {
+    token_free(&p->current);
+
+    if (p->has_lookahead) {
+        token_free(&p->lookahead);
+    }
+
+    free(p->indent_stack);
+    *p = (Parser){0};
+}
+
 ParseResult next_token(Parser *p) {
     token_free(&p->current);
 
