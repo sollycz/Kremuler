@@ -24,6 +24,15 @@ static const char precedence_table[19][19] = {
     {'<', '<', '<', '<', '<', '<', '<', '<', '<', '<', '<', '<', '<', '<', '<', '<', ' ', '<', ' '}, // $
 };
 
+typedef enum {
+    REDUCTION_INVALID,
+    REDUCTION_OPERAND,
+    REDUCTION_UNARY_OPERATION,
+    REDUCTION_BINARY_OPERATION,
+    REDUCTION_PARENTHESES,
+    REDUCTION_UNIT
+} ReductionType;
+
 static bool token_to_symbol(TokenType type, bool needs_operand, PrecedenceSymbol *symbol) {
     switch (type) {
         case TOK_PLUS:
@@ -121,12 +130,12 @@ static bool is_terminal(const StackItem *item, PrecedenceSymbol symbol)
     return item->type == STACK_TERMINAL && item->symbol == symbol;
 }
 
-static bool is_valid_reduction(const PrecedenceStack *stack)
+static ReductionType get_reduction_type(const PrecedenceStack *stack)
 {
     size_t boundary;
 
     if (stack_take_top_boundary(stack, &boundary) != true) {
-        return false;
+        return REDUCTION_INVALID;
     }
 
     size_t count = stack->length - boundary - 1;
@@ -134,7 +143,10 @@ static bool is_valid_reduction(const PrecedenceStack *stack)
 
     switch (count) {
         case 1:
-            return (is_terminal(first, SYMBOL_OPERAND));
+            if (is_terminal(first, SYMBOL_OPERAND)) {
+                return REDUCTION_OPERAND;
+            }
+            return REDUCTION_INVALID;
 
         case 2: {
             const StackItem *second = &stack->items[boundary + 2];
@@ -143,16 +155,16 @@ static bool is_valid_reduction(const PrecedenceStack *stack)
                 is_terminal(first, SYMBOL_UNARY_MINUS) || 
                 is_terminal(first, SYMBOL_NOT)) {
                 if (second->type == STACK_EXPRESSION) {
-                    return true;
+                    return REDUCTION_UNARY_OPERATION;
                 }
-                return false;
+                return REDUCTION_INVALID;
             }
 
             else if (is_terminal(first, SYMBOL_LEFT_PARENTHESIS) && is_terminal(second, SYMBOL_RIGHT_PARENTHESIS)) {
-                return true;
+                return REDUCTION_UNIT;
             }
 
-            return false;
+            return REDUCTION_INVALID;
         }
 
         case 3: {
@@ -175,24 +187,202 @@ static bool is_valid_reduction(const PrecedenceStack *stack)
                     is_terminal(second, SYMBOL_OR))) {
 
                     if (third->type == STACK_EXPRESSION) {
-                        return true;
+                        return REDUCTION_BINARY_OPERATION;
                     }
-                    return false;
+                    return REDUCTION_INVALID;
                 }
-                return false;
+                return REDUCTION_INVALID;
             }
 
             if (is_terminal(first, SYMBOL_LEFT_PARENTHESIS)) {
                 if (second->type == STACK_EXPRESSION) {
-                    return is_terminal(third, SYMBOL_RIGHT_PARENTHESIS);
+                    if (is_terminal(third, SYMBOL_RIGHT_PARENTHESIS) == true) {
+                        return REDUCTION_PARENTHESES;
+                    }
                 }
-                return false;
+                return REDUCTION_INVALID;
             }
 
-            return false;
+            return REDUCTION_INVALID;
         }
 
         default:
-            return false;
+            return REDUCTION_INVALID;
+    }
+}
+
+static PrecedenceAction get_action(PrecedenceSymbol stack_symbol, PrecedenceSymbol input_symbol) {
+    switch(precedence_table[stack_symbol][input_symbol]) {
+        case '<':
+            return ACTION_BEGIN_AND_PUSH;
+        case '=':
+            return ACTION_PUSH;
+        case '>':
+        return ACTION_REDUCE;
+        default:
+        return ACTION_ERROR;
+    }
+}
+
+int parse_expression(Token *token) {
+    PrecedenceStack stack;
+    if (stack_init(&stack) != true) {
+        return 99;
+    }
+
+    StackItem end = {0};
+    end.type = STACK_TERMINAL;
+    end.symbol = SYMBOL_END;
+    if (stack_push(&stack, end) != true) {
+        stack_free(&stack);
+        return 99;
+    }
+
+    bool needs_operand = true;
+    PrecedenceSymbol input_symbol;
+
+    while (1) {
+
+        if (token->type == TOK_EOL || token->type == TOK_EOF) {
+            input_symbol = SYMBOL_END;
+        }
+        else if (token_to_symbol(token->type, needs_operand, &input_symbol) != true) {
+            stack_free(&stack);
+            return 2;
+        }
+
+        size_t terminal_index;
+        if (stack_take_top_terminal(&stack, &terminal_index) != true) {
+            stack_free(&stack);
+            return 99;
+        }
+
+        if (input_symbol == SYMBOL_END && stack.length == 2 &&
+            is_terminal(&stack.items[0], SYMBOL_END) && 
+            stack.items[1].type == STACK_EXPRESSION) {
+                stack_free(&stack);
+                return 0;
+        }
+
+        PrecedenceAction action = get_action(stack.items[terminal_index].symbol, input_symbol);
+
+        switch (action) {
+            case ACTION_BEGIN_AND_PUSH: {
+                StackItem item = {0};
+                item.type = STACK_TERMINAL;
+                item.symbol = input_symbol;
+                item.token = *token;
+
+                StackItem boundary = {0};
+                boundary.type = STACK_BOUNDARY;
+                if (stack_insert(&stack, terminal_index + 1, boundary) != true) {
+                    stack_free(&stack);
+                    return 99;
+                }
+
+                if (stack_push(&stack, item) != true) {
+                    stack_free(&stack);
+                    return 99;
+                }
+
+                if (input_symbol == SYMBOL_OPERAND ||
+                    input_symbol == SYMBOL_RIGHT_PARENTHESIS) {
+                    needs_operand = false;
+                } 
+                else {
+                    needs_operand = true;
+                }
+                
+                break;
+            }
+            case ACTION_PUSH: {
+                StackItem item = {0};
+                item.type = STACK_TERMINAL;
+                item.symbol = input_symbol;
+                item.token = *token;
+
+                if (stack_push(&stack, item) != true) {
+                    stack_free(&stack);
+                    return 99;
+                }
+
+                if (input_symbol == SYMBOL_OPERAND ||
+                    input_symbol == SYMBOL_RIGHT_PARENTHESIS) {
+                    needs_operand = false;
+                } 
+                else {
+                    needs_operand = true;
+                }
+
+                break;
+            }
+            case ACTION_REDUCE: {
+                ReductionType reduction = get_reduction_type(&stack);
+            
+                if (reduction == REDUCTION_OPERAND) {
+                    size_t boundary_index;
+                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
+                        stack_free(&stack);
+                        return 99;
+                    }
+
+                    stack.items[boundary_index + 1].type = STACK_EXPRESSION;
+                    stack.items[boundary_index] = stack.items[boundary_index + 1];
+
+                    stack.length--;
+                    break;
+                }
+                else if (reduction == REDUCTION_UNIT) {
+                    size_t boundary_index;
+                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
+                        stack_free(&stack);
+                        return 99;
+                    }
+
+                    stack.items[boundary_index].type = STACK_EXPRESSION;
+
+                    stack.length -= 2;
+                    break;
+                } 
+                else if (reduction == REDUCTION_PARENTHESES) {
+                    size_t boundary_index;
+                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
+                        stack_free(&stack);
+                        return 99;
+                    }
+
+                    stack.items[boundary_index] = stack.items[boundary_index + 2];
+
+                    stack.length -= 3;
+                    break;
+                }
+                else if (reduction == REDUCTION_UNARY_OPERATION) { // TODO: ADD OPERATOR TO AST
+                    size_t boundary_index;
+                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
+                        stack_free(&stack);
+                        return 99;
+                    }
+
+                    stack.items[boundary_index] = stack.items[boundary_index + 2]; 
+
+                    stack.length -= 2;
+                    break;
+                }
+                else if (reduction == REDUCTION_INVALID) {
+                    stack_free(&stack);
+                    return 2;
+                }
+                stack_free(&stack);
+                return 2;
+            }
+
+            case ACTION_ERROR:
+                stack_free(&stack);
+                return 2;
+
+            default:
+                stack_free(&stack);
+                return 99;
+        }
     }
 }
