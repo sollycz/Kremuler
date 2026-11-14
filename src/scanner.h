@@ -18,6 +18,11 @@ typedef enum {
     SCANNER_READ_ERROR = 99
 } ScannerErrorCode;
 
+/** 
+ * @brief Gets token from stdin
+ * @param[out] token with valid token->type and token->data and token->indent
+ * @return SCANNER_OK on success, otherwise a scanner error code
+*/
 ScannerErrorCode scanner_get_token(Token *token);
 
 #endif
