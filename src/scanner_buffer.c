@@ -2,6 +2,7 @@
  * @file scanner_buffer.c
  * @brief Dynamic character buffer implementation for the IFJ26 scanner.
  * @author David Zoblivý (xzoblid00)
+ * @date 14.11.2026
  */
 
 #include "scanner_buffer.h"
@@ -10,6 +11,12 @@
 
 #define INIT_CAPACITY 16
 
+/**
+ * @brief initialize dynamic memory buffer
+ * @param[out] buffer to initialize
+ * @return SCANNER_OK, otherwise SCANNER_MEMORY_ERROR
+ * @note the buffer is initially empty and terminated with '\0'
+ */
 ScannerErrorCode buffer_init(StringBuffer *buffer)
 {
     buffer->data = malloc(INIT_CAPACITY);
@@ -24,6 +31,10 @@ ScannerErrorCode buffer_init(StringBuffer *buffer)
     return SCANNER_OK;
 }
 
+/**
+ * @brief free dynamic memory buffer
+ * @param[in, out] buffer whose memory is freed and fields are reset
+ */
 void buffer_free(StringBuffer *buffer)
 {
     free(buffer->data);
@@ -33,6 +44,11 @@ void buffer_free(StringBuffer *buffer)
     buffer->capacity = 0;
 }
 
+/**
+ * @brief buffer capacity will be doubled
+ * @param[in, out] buffer whose capacity is doubled
+ * @return SCANNER_OK on success, otherwise SCANNER_MEMORY_ERROR
+ */
 ScannerErrorCode buffer_increase(StringBuffer *buffer)
 {
     if (buffer->capacity > SIZE_MAX / 2) {
@@ -52,6 +68,12 @@ ScannerErrorCode buffer_increase(StringBuffer *buffer)
     return SCANNER_OK;
 }
 
+/**
+ * @brief character will be added at the end of the buffer
+ * @param[in, out] buffer to which the character is appended
+ * @param[in] c character that will be added
+ * @return SCANNER_OK on success, otherwise SCANNER_MEMORY_ERROR
+ */
 ScannerErrorCode buffer_append(StringBuffer *buffer, char c)
 {
     if (buffer->length + 2 > buffer->capacity) {

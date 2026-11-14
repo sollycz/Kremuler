@@ -2,7 +2,7 @@
  * @file scanner.h
  * @brief Header file for the lexical analyzer for IFJ26
  * @author David Zoblivý (xzoblid00)
- * @todo add comments
+ * @date 14.11.2026
  */
 
 #ifndef SCANNER_H
@@ -22,6 +22,7 @@ typedef enum {
  * @brief Gets token from stdin
  * @param[out] token with valid token->type and token->data and token->indent
  * @return SCANNER_OK on success, otherwise a scanner error code
+ * @note TOK_ID and TOK_STRING_LITERAL -> caller must free memory token->data.str_val
 */
 ScannerErrorCode scanner_get_token(Token *token);
 

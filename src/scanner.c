@@ -2,7 +2,8 @@
  * @file scanner.c
  * @brief Lexical analyzer for IFJ26 to IFJcode26
  * @author David Zoblivý (xzoblid00)
- * @todo add comments
+ * @date 14.11.2026
+ * @todo add stderr messages
  */
 
 #include "scanner.h"
@@ -87,6 +88,11 @@ typedef struct interpolation_state {
     struct interpolation_state *previous;
 } InterpolationState;
 
+/**
+ * @brief checks whether the input is a keyword or an identifier
+ * @param[in] text word to classify
+ * @return TOK_KW_*** if keyword is found, otherwise TOK_ID
+ */
 static TokenType keyword_or_id(const char *text) {
     if (strcmp(text, "var") == 0) {
         return TOK_KW_VAR;
@@ -173,6 +179,10 @@ static bool trailing_comma_allowed = false; // in parentheses after comma there 
 // pending token
 static bool processing_dot = false;          // VALMEM extension
 
+/**
+ * @brief reads the next character from stdin and updates the position tracker
+ * @return character value as int, or EOF at end of input or on a read error
+ */
 static int scanner_getchar(void) {
     last_line = next_line;
     last_column = next_column;
@@ -189,6 +199,11 @@ static int scanner_getchar(void) {
     return c;
 }
 
+/**
+ * @brief return the most recently read character to stdin and restore the tracker position
+ * @param[in] c character to return to stdin
+ * @return character that was returned, or EOF if return failed or the character is EOF
+ */
 static int scanner_ungetc(int c) {
     if (c == EOF) {
         return EOF;
@@ -204,6 +219,10 @@ static int scanner_ungetc(int c) {
     return result;
 }
 
+/**
+ * @brief pushes the current interpolation state to a stack
+ * @return SCANNER_OK on success, otherwise SCANNER_MEMORY_ERROR
+ */
 static ScannerErrorCode interpolation_push(void) {
     InterpolationState *stack_node = malloc(sizeof(*stack_node));
     if (stack_node == NULL) {
@@ -216,6 +235,10 @@ static ScannerErrorCode interpolation_push(void) {
     return SCANNER_OK;
 }
 
+/** 
+ * @brief pop and restore the last saved interpolation state out of a stack 
+ * @return SCANNER_OK on success, otherwise SCANNER_INVALID_STATE_ERROR if stack is empty
+*/
 static ScannerErrorCode interpolation_pop(void) {
     if (current_interpolation.previous == NULL) {
         return SCANNER_INVALID_STATE_ERROR;
@@ -228,6 +251,9 @@ static ScannerErrorCode interpolation_pop(void) {
     return SCANNER_OK;
 }
 
+/**
+ * @brief free the interpolation state stack and reset the current state
+ */
 static void interpolation_free(void) {
     while (current_interpolation.previous != NULL) {
         InterpolationState *stack_node = current_interpolation.previous;
@@ -240,6 +266,11 @@ static void interpolation_free(void) {
     current_interpolation.reading_expression = false;
 }
 
+/**
+ * @brief processes part of the interpolated string and creates one token
+ * @param[out] token receives the token data on success
+ * @return SCANNER_OK on success, otherwise relevant error code 
+ */
 static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
     if (current_interpolation.mode == INTERPOLATED_MODE_ENDED) {
         token->type = TOK_INTERPOLATED_END;
@@ -413,6 +444,11 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
     return SCANNER_INVALID_STATE_ERROR;
 }
 
+/**
+ * @brief reads the next token using the finite state machine
+ * @param[out] token receives the token data on success
+ * @return SCANNER_OK on success, otherwise relevant error code 
+ */
 static ScannerErrorCode scanner_read_token(Token *token) {
     if (processing_dot == true) {
         token->type = TOK_DOT;
@@ -1513,6 +1549,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
         }
     }
 }
+
 
 ScannerErrorCode scanner_get_token(Token *token) {
     token->indent = 0;
