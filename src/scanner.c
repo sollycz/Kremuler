@@ -643,9 +643,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 break;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = keyword_or_id(buffer.data);
             if (token->type == TOK_ID) {
@@ -716,9 +714,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_INT_UNDERSCORE_AFTER_ZERO;
                 break;
             }
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_INT_LITERAL;
             token->data.num_int_val = 0;
@@ -758,9 +754,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_DOUBLE_EXPONENT;
                 break;
             }
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
             token->type = TOK_INT_LITERAL;
             token->data.num_int_val = strtoll(buffer.data, NULL, 10);
             buffer_free(&buffer);
@@ -825,9 +819,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 }
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_INT_LITERAL;
             token->data.num_int_val = 0;
@@ -863,9 +855,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_DOUBLE_DIGITS;
                 break;
             }
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_DOT;
             buffer_free(&buffer);
@@ -884,9 +874,8 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             }
             if (isalpha(c) || (c == '_')) {
                 processed_dot = true;
-                if (c != EOF) {
-                    scanner_ungetc(c);
-                }
+                
+                scanner_ungetc(c);
                 buffer.length--;
                 buffer.data[buffer.length] = '\0';
 
@@ -929,9 +918,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_DOUBLE_EXPONENT;
                 break;
             }
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_DOUBLE_LITERAL;
             token->data.num_float_val = strtod(buffer.data, NULL);
@@ -1015,9 +1002,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_DOUBLE_SUFFIX;
                 break;
             }
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_DOUBLE_LITERAL;
             token->data.num_float_val = strtod(buffer.data, NULL);
@@ -1121,9 +1106,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 break;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
             token->type = TOK_STRING_LITERAL;
             token->data.str_val = buffer.data;
             return SCANNER_OK;
@@ -1227,9 +1210,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_STRING_MULTILINE_SECOND_QUOTE;
                 break;
             }
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             ScannerErrorCode result = buffer_append(&buffer, '"');
             if (result != SCANNER_OK) {
@@ -1264,9 +1245,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 return result;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             state = STATE_STRING_MULTILINE_BODY;
             break;
@@ -1283,9 +1262,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 c = scanner_getchar();
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_STRING_LITERAL;
             token->data.str_val = buffer.data;
@@ -1317,9 +1294,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 break;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_DIVISION;
             return SCANNER_OK;
@@ -1336,9 +1311,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 return SCANNER_OK;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_LESS_THAN;
             return SCANNER_OK;
@@ -1350,9 +1323,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 return SCANNER_OK;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_GREATER_THAN;
             return SCANNER_OK;
@@ -1364,9 +1335,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 return SCANNER_OK;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_ASSIGN;
             return SCANNER_OK;
@@ -1378,9 +1347,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 return SCANNER_OK;
             }
 
-            if (c != EOF) {
-                scanner_ungetc(c);
-            }
+            scanner_ungetc(c);
 
             token->type = TOK_NOT;
             return SCANNER_OK;
