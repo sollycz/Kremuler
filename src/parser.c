@@ -32,7 +32,7 @@ ParseResult next_token(Parser *p) {
 ParseResult lookahead_token(Parser *p, TokenType *type) {
     if (!p->has_lookahead) {
         ParseResult result = (ParseResult)scanner_get_token(&p->lookahead);
-        
+
         if (result != PARSE_OK) {
             return result;
         }

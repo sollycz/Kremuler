@@ -19,7 +19,7 @@ typedef enum ParseResult {
 
 typedef struct Parser {
     Token current;
-    Token lookahead;    // token after the current one
+    Token lookahead; // token after the current one
     bool has_lookahead;
 } Parser;
 
