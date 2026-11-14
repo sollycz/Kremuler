@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 typedef enum {
     // Start
@@ -341,7 +342,7 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             return SCANNER_OK;
         }
 
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
+        if (isalpha(c) || (c == '_')) {
             ScannerErrorCode result = buffer_append(&buffer, (char)c);
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
@@ -349,7 +350,7 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             }
 
             c = scanner_getchar();
-            while ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9')) {
+            while (isalnum(c) || (c == '_')) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -573,7 +574,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 break;
             }
 
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+            if (isalpha(c)) {
                 ScannerErrorCode result = buffer_init(&buffer);
                 if (result != SCANNER_OK) {
                     return result;
@@ -631,7 +632,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 break;
             }
 
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9')) {
+            if (isalnum(c) || (c == '_')) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -657,7 +658,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_IDENTIFIER_UNDERSCORE:
             c = scanner_getchar();
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9')) {
+            if (isalnum(c) || (c == '_')) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -684,7 +685,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 return result;
             }
 
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -727,7 +728,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_INT_DIGITS:
             c = scanner_getchar();
-            while (c >= '0' && c <= '9') {
+            while (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -770,7 +771,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             while (c == '_') {
                 c = scanner_getchar();
             }
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -785,7 +786,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_INT_DIGITS_AFTER_ZERO:
             c = scanner_getchar();
-            while (c >= '0' && c <= '9') {
+            while (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -838,7 +839,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             while (c == '_') {
                 c = scanner_getchar();
             }
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -853,7 +854,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
         // Decimal literals
         case STATE_DOT:
             c = scanner_getchar();
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -872,7 +873,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_NUMBER_AFTER_DOT:
             c = scanner_getchar();
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -881,7 +882,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 state = STATE_DOUBLE_DIGITS;
                 break;
             }
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
+            if (isalpha(c) || (c == '_')) {
                 processed_dot = true;
                 if (c != EOF) {
                     scanner_ungetc(c);
@@ -903,7 +904,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_DOUBLE_DIGITS:
             c = scanner_getchar();
-            while (c >= '0' && c <= '9') {
+            while (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -943,7 +944,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             while (c == '_') {
                 c = scanner_getchar();
             }
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -968,7 +969,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
                 state = STATE_DOUBLE_EXPONENT_SIGN;
                 break;
-            } else if (c >= '0' && c <= '9') {
+            } else if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -983,7 +984,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_DOUBLE_EXPONENT_SIGN:
             c = scanner_getchar();
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -998,7 +999,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_DOUBLE_EXPONENT_DIGITS:
             c = scanner_getchar();
-            while (c >= '0' && c <= '9') {
+            while (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
@@ -1029,7 +1030,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             while (c == '_') {
                 c = scanner_getchar();
             }
-            if (c >= '0' && c <= '9') {
+            if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
