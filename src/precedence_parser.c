@@ -2,6 +2,8 @@
 #include "precedence_stack.h"
 #include "token.h"
 #include "ast.h"
+#include <string.h>
+#include <stdlib.h>
 
 static const char precedence_table[19][19] = {
     {'>', '>', '<', '<', '>', '>', '>', '>', '>', '>', '<', '<', '<', '>', '>', '<', '>', '<', '>'}, // +
@@ -256,6 +258,44 @@ static int reduce_expression(PrecedenceStack *stack) {
             else {
                 node->as.literal.value.int_val = 0; // TODO: PŘEDĚLAT NA .BOOL_VAL AŽ BUDE!
             }
+            stack->items[boundary_index + 1].ast = node;
+        }
+
+        if (stack->items[boundary_index + 1].token.type == TOK_STRING_LITERAL) {
+            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
+            if (node == NULL) {
+                return 99;
+            }
+
+            node->type = TYPE_STRING;
+
+            size_t length = strlen(stack->items[boundary_index + 1].token.data.str_val) + 1;
+            node->as.literal.value.string_val = malloc(length);
+            if (node->as.literal.value.string_val == NULL) {
+                free(node);
+                return 99;
+            }
+
+            strcpy(node->as.literal.value.string_val, stack->items[boundary_index + 1].token.data.str_val);
+            stack->items[boundary_index + 1].ast = node;
+        }
+
+        if (stack->items[boundary_index + 1].token.type == TOK_ID) {
+            AstNode *node = ast_new(AST_IDENTIFIER, stack->items[boundary_index + 1].token.line);
+            if (node == NULL) {
+                return 99;
+            }
+
+            node->type = TYPE_UNKNOWN;
+
+            size_t length = strlen(stack->items[boundary_index + 1].token.data.str_val) + 1;
+            node->as.identifier.name = malloc(length);
+            if (node->as.identifier.name == NULL) {
+                free(node);
+                return 99;
+            }
+
+            strcpy(node->as.identifier.name, stack->items[boundary_index + 1].token.data.str_val);
             stack->items[boundary_index + 1].ast = node;
         }
 
