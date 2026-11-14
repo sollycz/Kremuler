@@ -211,6 +211,71 @@ static ReductionType get_reduction_type(const PrecedenceStack *stack)
     }
 }
 
+static int reduce_expression(PrecedenceStack *stack) {
+    ReductionType reduction = get_reduction_type(stack);
+                
+    if (reduction == REDUCTION_OPERAND) {
+        size_t boundary_index;
+        if (stack_take_top_boundary(stack, &boundary_index) != true) {
+            return 99;
+        }
+
+        stack->items[boundary_index + 1].type = STACK_EXPRESSION;
+        stack->items[boundary_index] = stack->items[boundary_index + 1];
+
+        stack->length--;
+        return 0;
+    }
+    else if (reduction == REDUCTION_UNIT) {
+        size_t boundary_index;
+        if (stack_take_top_boundary(stack, &boundary_index) != true) {
+            return 99;
+        }
+
+        stack->items[boundary_index].type = STACK_EXPRESSION;
+
+        stack->length -= 2;
+        return 0;
+    } 
+    else if (reduction == REDUCTION_PARENTHESES) {
+        size_t boundary_index;
+        if (stack_take_top_boundary(stack, &boundary_index) != true) {
+            return 99;
+        }
+
+        stack->items[boundary_index] = stack->items[boundary_index + 2];
+
+        stack->length -= 3;
+        return 0;
+    }
+    else if (reduction == REDUCTION_UNARY_OPERATION) { 
+        size_t boundary_index;
+        if (stack_take_top_boundary(stack, &boundary_index) != true) {
+            return 99;
+        }
+
+        stack->items[boundary_index] = stack->items[boundary_index + 2]; 
+
+        stack->length -= 2;
+        return 0;
+    }
+    else if (reduction == REDUCTION_INVALID) {
+        return 2;
+    }
+    else if (reduction == REDUCTION_BINARY_OPERATION) {
+        size_t boundary_index;
+        if (stack_take_top_boundary(stack, &boundary_index) != true) {
+            return 99;
+        }
+
+        stack->items[boundary_index] = stack->items[boundary_index + 1]; 
+
+        stack->length -=3;
+        return 0;
+    }
+    return 2;
+}
+
 static PrecedenceAction get_action(PrecedenceSymbol stack_symbol, PrecedenceSymbol input_symbol) {
     switch(precedence_table[stack_symbol][input_symbol]) {
         case '<':
@@ -317,75 +382,12 @@ int parse_expression(Token *token) {
                 break;
             }
             case ACTION_REDUCE: {
-                ReductionType reduction = get_reduction_type(&stack);
-            
-                if (reduction == REDUCTION_OPERAND) {
-                    size_t boundary_index;
-                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
-                        stack_free(&stack);
-                        return 99;
-                    }
-
-                    stack.items[boundary_index + 1].type = STACK_EXPRESSION;
-                    stack.items[boundary_index] = stack.items[boundary_index + 1];
-
-                    stack.length--;
-                    break;
-                }
-                else if (reduction == REDUCTION_UNIT) {
-                    size_t boundary_index;
-                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
-                        stack_free(&stack);
-                        return 99;
-                    }
-
-                    stack.items[boundary_index].type = STACK_EXPRESSION;
-
-                    stack.length -= 2;
-                    break;
-                } 
-                else if (reduction == REDUCTION_PARENTHESES) {
-                    size_t boundary_index;
-                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
-                        stack_free(&stack);
-                        return 99;
-                    }
-
-                    stack.items[boundary_index] = stack.items[boundary_index + 2];
-
-                    stack.length -= 3;
-                    break;
-                }
-                else if (reduction == REDUCTION_UNARY_OPERATION) { // TODO: ADD OPERATOR TO AST
-                    size_t boundary_index;
-                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
-                        stack_free(&stack);
-                        return 99;
-                    }
-
-                    stack.items[boundary_index] = stack.items[boundary_index + 2]; 
-
-                    stack.length -= 2;
-                    break;
-                }
-                else if (reduction == REDUCTION_INVALID) {
+                int result = reduce_expression(&stack);
+                if (result != 0) {
                     stack_free(&stack);
-                    return 2;
-                }
-                else if (reduction == REDUCTION_BINARY_OPERATION) {
-                    size_t boundary_index;
-                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
-                        stack_free(&stack);
-                        return 99;
-                    }
-
-                    stack.items[boundary_index] = stack.items[boundary_index + 1]; 
-
-                    stack.length -=3;
-                    break;
-                }
-                stack_free(&stack);
-                return 2;
+                    return result;
+                } 
+                break;
             }
 
             case ACTION_ERROR:
