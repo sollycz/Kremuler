@@ -271,7 +271,14 @@ static int reduce_expression(PrecedenceStack *stack) {
             return 99;
         }
 
+        AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
+        if (node == NULL) {
+            return 99;
+        }
+
+        node->type = TYPE_UNIT;
         stack->items[boundary_index].type = STACK_EXPRESSION;
+        stack->items[boundary_index].ast = node;
 
         stack->length -= 2;
         return 0;
