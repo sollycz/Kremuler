@@ -149,21 +149,29 @@ static TokenType keyword_or_id(const char *text) {
     return TOK_ID;
 }
 
+// position tracking
 static unsigned int next_line = 1;
 static unsigned int next_column = 1;
 static unsigned int last_line = 1;
 static unsigned int last_column = 1;
 
-static unsigned int number_of_parentheses = 0;
-static bool line_has_token = false;
-static bool comment_has_lf = false;
-static unsigned int number_of_nested_comments = 0;
-static bool reading_indentation = true;
-static bool tab_in_indent = false;
-static unsigned int current_indent = 0;
-static bool trailing_comma_allowed = false;
-static bool processed_dot = false;
+// nesting flags
+static unsigned int parentheses_depth = 0;
+static unsigned int comments_depth = 0;
 static InterpolationState current_interpolation = {0};
+
+// indentation
+static bool reading_indentation = true;     // count spaces before the first token
+static unsigned int current_indent = 0;     // counted space indentation
+static bool tab_in_indent = false;          // if there is a tab in indentation before token -> lexical error
+
+// line ending
+static bool line_has_token = false;         // ignore lines that dont have token
+static bool comment_has_lf = false;         // checks for tokens after end of multiline comment
+static bool trailing_comma_allowed = false; // in parentheses after comma there can be a NEWLINE
+
+// pending token
+static bool processing_dot = false;          // VALMEM extension
 
 static int scanner_getchar(void) {
     last_line = next_line;
@@ -406,12 +414,12 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
 }
 
 static ScannerErrorCode scanner_read_token(Token *token) {
-    if (processed_dot == true) {
+    if (processing_dot == true) {
         token->type = TOK_DOT;
         token->line = next_line;
         token->column = next_column - 1;
 
-        processed_dot = false;
+        processing_dot = false;
 
         return SCANNER_OK;
     }
@@ -873,7 +881,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 break;
             }
             if (isalpha(c) || (c == '_')) {
-                processed_dot = true;
+                processing_dot = true;
                 
                 scanner_ungetc(c);
                 buffer.length--;
@@ -1289,7 +1297,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             }
             if (c == '*') {
                 state = STATE_MULTI_LINE_COMMENT;
-                number_of_nested_comments = 1;
+                comments_depth = 1;
                 comment_has_lf = false;
                 break;
             }
@@ -1371,13 +1379,13 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         case STATE_LEFT_PARENTHESES:
             token->type = TOK_LEFT_PARENTHESIS;
-            number_of_parentheses++;
+            parentheses_depth++;
             return SCANNER_OK;
 
         case STATE_RIGHT_PARENTHESES:
             token->type = TOK_RIGHT_PARENTHESIS;
-            if (number_of_parentheses > 0) {
-                number_of_parentheses--;
+            if (parentheses_depth > 0) {
+                parentheses_depth--;
             }
             return SCANNER_OK;
 
@@ -1432,7 +1440,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                         return SCANNER_LEXICAL_ERROR;
                     }
                     if (c == '*') {
-                        number_of_nested_comments++;
+                        comments_depth++;
                         c = scanner_getchar();
                         continue;
                     }
@@ -1443,8 +1451,8 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                         return SCANNER_LEXICAL_ERROR;
                     }
                     if (c == '/') {
-                        number_of_nested_comments--;
-                        if (number_of_nested_comments == 0) {
+                        comments_depth--;
+                        if (comments_depth == 0) {
                             break;
                         }
 
@@ -1484,7 +1492,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             tab_in_indent = false;
             trailing_comma_allowed = true;
 
-            if (number_of_parentheses == 0 && line_has_token) {
+            if (parentheses_depth == 0 && line_has_token) {
                 token->type = TOK_EOL;
                 line_has_token = false;
                 return SCANNER_OK;
