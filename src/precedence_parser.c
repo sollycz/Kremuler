@@ -372,6 +372,18 @@ int parse_expression(Token *token) {
                     stack_free(&stack);
                     return 2;
                 }
+                else if (reduction == REDUCTION_BINARY_OPERATION) {
+                    size_t boundary_index;
+                    if (stack_take_top_boundary(&stack, &boundary_index) != true) {
+                        stack_free(&stack);
+                        return 99;
+                    }
+
+                    stack.items[boundary_index] = stack.items[boundary_index + 1]; 
+
+                    stack.length -=3;
+                    break;
+                }
                 stack_free(&stack);
                 return 2;
             }
