@@ -8,6 +8,7 @@
 #define PARSER_H
 
 #include "token.h"
+#include <stdbool.h>
 
 typedef enum ParseResult {
     PARSE_OK = 0,
@@ -18,6 +19,8 @@ typedef enum ParseResult {
 
 typedef struct Parser {
     Token current;
+    Token lookahead;    // token after the current one
+    bool has_lookahead;
 } Parser;
 
 // moves p->current to the next token received from the scanner
@@ -26,5 +29,8 @@ typedef struct Parser {
 //  2. set p->current.data.str_val to NULL
 //  3. only then call next_token(p)
 ParseResult next_token(Parser *p);
+
+// stores the type of the token after p->current into *type without moving the parser to it
+ParseResult lookahead_token(Parser *p, TokenType *type);
 
 #endif

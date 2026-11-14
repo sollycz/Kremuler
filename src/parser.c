@@ -18,5 +18,28 @@ static void token_free(Token *token) {
 
 ParseResult next_token(Parser *p) {
     token_free(&p->current);
+
+    // if we have a stored lookahead token, use that instead of asking the scanner for a new one
+    if (p->has_lookahead) {
+        p->current = p->lookahead;
+        p->has_lookahead = false;
+        return PARSE_OK;
+    }
+
     return (ParseResult)scanner_get_token(&p->current);
+}
+
+ParseResult lookahead_token(Parser *p, TokenType *type) {
+    if (!p->has_lookahead) {
+        ParseResult result = (ParseResult)scanner_get_token(&p->lookahead);
+        
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        p->has_lookahead = true;
+    }
+
+    *type = p->lookahead.type;
+    return PARSE_OK;
 }
