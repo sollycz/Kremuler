@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "token.h"
 #include "precedence_parser.h"
+#include "ast.h"
 
 typedef enum {
     STACK_TERMINAL,
@@ -16,6 +17,7 @@ typedef struct {
     StackItemType type;
     PrecedenceSymbol symbol;
     Token token;
+    AstNode *ast;
 } StackItem;
 
 typedef struct {

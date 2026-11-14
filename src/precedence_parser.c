@@ -1,6 +1,7 @@
 #include "precedence_parser.h"
 #include "precedence_stack.h"
 #include "token.h"
+#include "ast.h"
 
 static const char precedence_table[19][19] = {
     {'>', '>', '<', '<', '>', '>', '>', '>', '>', '>', '<', '<', '<', '>', '>', '<', '>', '<', '>'}, // +
@@ -218,6 +219,44 @@ static int reduce_expression(PrecedenceStack *stack) {
         size_t boundary_index;
         if (stack_take_top_boundary(stack, &boundary_index) != true) {
             return 99;
+        }
+        
+        if (stack->items[boundary_index + 1].token.type == TOK_INT_LITERAL) {
+            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
+            if (node == NULL) {
+                return 99;
+            }
+
+            node->type = TYPE_INT;
+            node->as.literal.value.int_val = stack->items[boundary_index + 1].token.data.num_int_val;
+            stack->items[boundary_index + 1].ast = node;
+        }
+
+        if (stack->items[boundary_index + 1].token.type == TOK_DOUBLE_LITERAL) {
+            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
+            if (node == NULL) {
+                return 99;
+            }
+
+            node->type = TYPE_DOUBLE;
+            node->as.literal.value.double_val = stack->items[boundary_index + 1].token.data.num_float_val;
+            stack->items[boundary_index + 1].ast = node;
+        }
+
+        if (stack->items[boundary_index + 1].token.type == TOK_TRUE || stack->items[boundary_index + 1].token.type == TOK_FALSE) {
+            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
+            if (node == NULL) {
+                return 99;
+            }
+
+            node->type = TYPE_BOOL;
+            if (stack->items[boundary_index + 1].token.type == TOK_TRUE) { 
+                node->as.literal.value.int_val = 1; // TODO: PŘEDĚLAT NA .BOOL_VAL AŽ BUDE!
+            }
+            else {
+                node->as.literal.value.int_val = 0; // TODO: PŘEDĚLAT NA .BOOL_VAL AŽ BUDE!
+            }
+            stack->items[boundary_index + 1].ast = node;
         }
 
         stack->items[boundary_index + 1].type = STACK_EXPRESSION;
