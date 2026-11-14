@@ -106,9 +106,11 @@ static bool probe_slots(const htab *ht, htab_key_t key, htab_size_t hash, htab_s
     htab_slot_t *deleted_slot = NULL;
     htab_size_t i = hash % ht->capacity;
 
+    // in the worst case scenario go through one full lap
     for (htab_size_t k = 0; k < ht->capacity; k++) {
         htab_slot_t *s = &ht->slots[i];
 
+        // first empty slot ends the search, the key can not be any further
         if (s->state == SLOT_EMPTY) {
             if (deleted_slot != NULL) {
                 *out_slot = deleted_slot;
@@ -117,6 +119,8 @@ static bool probe_slots(const htab *ht, htab_key_t key, htab_size_t hash, htab_s
             }
             return false;
         }
+
+        // keep the first deleted slot for insert
         if (s->state == SLOT_DELETED) {
             if (deleted_slot == NULL) {
                 deleted_slot = s;
@@ -155,12 +159,12 @@ bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
 }
 
 // resizes slots for new_capacity and clears all deleted slots.
-// return true if succesfull, otherwise false. (table is left unchanged)
+// return true if succesful, otherwise false. (table is left unchanged)
 static bool resize(htab *ht, htab_size_t new_capacity) {
     assert(ht->capacity <= new_capacity);
 
     if (new_capacity > SIZE_MAX / sizeof(htab_slot_t)) {
-        // malloc would overflow
+        // malloc would allocate wrong size thanks to unsigned wraparound
         return false;
     }
 
@@ -179,6 +183,7 @@ static bool resize(htab *ht, htab_size_t new_capacity) {
         old_slot = &ht->slots[i];
         if (old_slot->state == SLOT_USED) {
             new_index = old_slot->hash % new_capacity;
+            // there are no deleted slots in fresh table, first empty is the correct one
             while (new_slots[new_index].state != SLOT_EMPTY) {
                 new_index++;
                 if (new_index == new_capacity) {
@@ -207,28 +212,33 @@ htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
     }
     assert(slot != NULL);
 
+    // using an empty slot raises used -> check if grow is needed
     if (slot->state == SLOT_EMPTY) {
         htab_size_t cur_max_size = ht->capacity * HTAB_LOAD_FACTOR / 100;
 
         if (ht->used >= cur_max_size) {
             htab_size_t new_capacity = ht->capacity;
 
+            // if deleted slots are under DELETE_LOAD_FACTOR -> table is too full, double it
+            // if deleted slots are above -> rehash at the same capacity, thus clearing deleted slots
             if (ht->used - ht->size < ht->capacity * HTAB_DELETED_LOAD_FACTOR / 100) {
-                new_capacity *= 2;
-
-                if (new_capacity > ULONG_MAX) {
+                if (new_capacity > ULONG_MAX / 2) {
                     return HTAB_NOMEM;
                 }
+                new_capacity *= 2;
             }
 
             if (!resize(ht, new_capacity)) {
                 return HTAB_NOMEM;
             }
+            // slots were moved (rehash or resize), find the first insert position and reinsert into the new table
             bool found = probe_slots(ht, key, hash, &slot);
             assert(!found && slot != NULL);
         }
     }
 
+    // reusing a deleted slot does not change used
+    // using empty one does
     if (slot->state == SLOT_EMPTY) {
         ht->used++;
     }
@@ -257,7 +267,7 @@ bool htab_remove(htab *ht, htab_key_t key) {
 
     slot->state = SLOT_DELETED;
 
-    // not nescessery
+    // not needed, but makes for easier debugging later
     slot->key = NULL;
     slot->value = NULL;
 
