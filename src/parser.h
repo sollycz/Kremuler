@@ -24,6 +24,7 @@ typedef struct Parser {
     bool has_lookahead;
     unsigned int *indent_stack; // for keeping track of indentation [0] -> [0, 4] -> ...
     size_t indent_count;
+    bool at_line_start; // (is true after TOK_EOL or at the start of the file)
 } Parser;
 
 // initializes the parser
@@ -41,6 +42,7 @@ void parser_destroy(Parser *p);
 ParseResult next_token(Parser *p);
 
 // stores the type of the token after p->current into *type without moving the parser to it
+// (also must not be called when current token is TOK_EOL, since that would skip the indentation of the next line)
 ParseResult lookahead_token(Parser *p, TokenType *type);
 
 #endif

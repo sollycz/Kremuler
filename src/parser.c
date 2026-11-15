@@ -34,6 +34,7 @@ static ParseResult indent_push(Parser *p, unsigned int indent) {
 
 ParseResult parser_init(Parser *p) {
     *p = (Parser){0};
+    p->at_line_start = true;
     return indent_push(p, 0);
 }
 
@@ -55,10 +56,40 @@ ParseResult next_token(Parser *p) {
     if (p->has_lookahead) {
         p->current = p->lookahead;
         p->has_lookahead = false;
+    } else {
+        ParseResult result = (ParseResult)scanner_get_token(&p->current);
+        if (result != PARSE_OK) {
+            return result;
+        }
+    }
+
+    if (p->current.type == TOK_EOL) {
+        p->at_line_start = true;
         return PARSE_OK;
     }
 
-    return (ParseResult)scanner_get_token(&p->current);
+    if (!p->at_line_start || p->current.type == TOK_EOF) {
+        return PARSE_OK;
+    }
+
+    p->at_line_start = false;
+
+    // compare indentation level of the current token with the top of the stack
+    unsigned int top = p->indent_stack[p->indent_count - 1];
+    if (p->current.indent > top) {
+        ParseResult result = indent_push(p, p->current.indent);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        // store the real token as lookahead and return an INDENT token
+        p->lookahead = p->current;
+        p->has_lookahead = true;
+
+        p->current = (Token){.type = TOK_INDENT, .line = p->lookahead.line, .indent = p->lookahead.indent};
+    }
+
+    return PARSE_OK;
 }
 
 ParseResult lookahead_token(Parser *p, TokenType *type) {
