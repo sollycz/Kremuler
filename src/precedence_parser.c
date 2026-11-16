@@ -389,7 +389,60 @@ static int reduce_expression(PrecedenceStack *stack) {
             return 99;
         }
 
+        AstNode *node = ast_new(AST_BINARY_OPERATOR, stack->items[boundary_index + 2].token.line);
+        if (node == NULL) {
+            return 99;
+        }
+
+        node->type = TYPE_UNKNOWN;
+        if (stack->items[boundary_index + 2].token.type == TOK_PLUS) {
+            node->as.binary.operator_type = OP_ADD;
+        } 
+        else if (stack->items[boundary_index + 2].token.type == TOK_MINUS) {
+            node->as.binary.operator_type = OP_SUB;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_MULTIPLY) {
+            node->as.binary.operator_type = OP_MUL;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_DIVISION) {
+            node->as.binary.operator_type = OP_DIV;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_LESS_THAN) {
+            node->as.binary.operator_type = OP_LT;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_LESS_OR_EQUAL_THAN) {
+            node->as.binary.operator_type = OP_LE;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_GREATER_THAN) {
+            node->as.binary.operator_type = OP_GT;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_GREATER_OR_EQUAL_THAN) {
+            node->as.binary.operator_type = OP_GE;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_EQUAL) {
+            node->as.binary.operator_type = OP_EQ;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_NOT_EQUAL) {
+            node->as.binary.operator_type = OP_NE;
+        }
+    /*   UNCOMMENT AFTER ADDING && AND || INTO AST.H
+        else if (stack->items[boundary_index + 2].token.type == TOK_AND) {
+            node->as.binary.operator_type = OP_AND;
+        }
+        else if (stack->items[boundary_index + 2].token.type == TOK_OR) {
+            node->as.binary.operator_type = OP_OR;
+        }
+    */
+        
+        else {
+            free(node);
+            return 2;
+        }
+
+        node->as.binary.left = stack->items[boundary_index + 1].ast;
+        node->as.binary.right = stack->items[boundary_index + 3].ast;
         stack->items[boundary_index] = stack->items[boundary_index + 1]; 
+        stack->items[boundary_index].ast = node;
 
         stack->length -=3;
         return 0;
