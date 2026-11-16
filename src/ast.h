@@ -58,7 +58,6 @@ typedef struct AstNode AstNode;
 typedef struct AstNodeList {
     AstNode **items;
     size_t count;
-    size_t capacity;
 } AstNodeList;
 
 // AST node
