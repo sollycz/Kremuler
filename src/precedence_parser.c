@@ -502,9 +502,17 @@ int parse_expression(Parser *parser, AstNode **result) {
     bool needs_operand = true;
     PrecedenceSymbol input_symbol;
 
+    size_t parentheses_depth = 0;
+
     while (1) {
 
         if (token->type == TOK_EOL || token->type == TOK_EOF) {
+            input_symbol = SYMBOL_END;
+        }
+        else if (token->type == TOK_RIGHT_PARENTHESIS && parentheses_depth == 0) {
+            input_symbol = SYMBOL_END;
+        } 
+        else if (token->type == TOK_COMMA && parentheses_depth == 0) {
             input_symbol = SYMBOL_END;
         }
         else if (token_to_symbol(token->type, needs_operand, &input_symbol) != true) {
@@ -558,6 +566,15 @@ int parse_expression(Parser *parser, AstNode **result) {
                 else {
                     needs_operand = true;
                 }
+
+                if (input_symbol == SYMBOL_LEFT_PARENTHESIS) {
+                    parentheses_depth++;
+                }
+                else if (input_symbol == SYMBOL_RIGHT_PARENTHESIS) {
+                    if (parentheses_depth > 0) {
+                        parentheses_depth--;
+                    }
+                }
                 
                 ParseResult next_result = next_token(parser);
                 if (next_result != PARSE_OK) {
@@ -587,6 +604,15 @@ int parse_expression(Parser *parser, AstNode **result) {
                 } 
                 else {
                     needs_operand = true;
+                }
+
+                if (input_symbol == SYMBOL_LEFT_PARENTHESIS) {
+                    parentheses_depth++;
+                }
+                else if (input_symbol == SYMBOL_RIGHT_PARENTHESIS) {
+                    if (parentheses_depth > 0) {
+                        parentheses_depth--;
+                    }
                 }
 
                 ParseResult next_result = next_token(parser);
