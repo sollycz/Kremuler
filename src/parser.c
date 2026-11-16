@@ -72,11 +72,12 @@ ParseResult next_token(Parser *p) {
         return PARSE_OK;
     }
 
-    p->at_line_start = false;
-
     // compare indentation level of the current token with the top of the stack
     unsigned int top = p->indent_stack[p->indent_count - 1];
+
     if (p->current.indent > top) {
+        p->at_line_start = false; // INDENTs only come one at a time, so we toggle this off
+
         ParseResult result = indent_push(p, p->current.indent);
         if (result != PARSE_OK) {
             return result;
@@ -87,8 +88,28 @@ ParseResult next_token(Parser *p) {
         p->has_lookahead = true;
 
         p->current = (Token){.type = TOK_INDENT, .line = p->lookahead.line, .indent = p->lookahead.indent};
+        return PARSE_OK;
     }
 
+    if (p->current.indent < top) {
+        // DEDENTs may come more than one at a time, so we need to handle it with a counter
+        p->indent_count--;
+
+        // indentation between two open blocks
+        if (p->indent_stack[p->indent_count - 1] < p->current.indent) {
+            return PARSE_LEXICAL_ERROR;
+        }
+
+        // store the real token as lookahead and return a DEDENT token
+        p->lookahead = p->current;
+        p->has_lookahead = true;
+
+        p->current = (Token){.type = TOK_DEDENT, .line = p->lookahead.line, .indent = p->lookahead.indent};
+        return PARSE_OK;
+    }
+
+    // same indentation as the current block
+    p->at_line_start = false;
     return PARSE_OK;
 }
 
