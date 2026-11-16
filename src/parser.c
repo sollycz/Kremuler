@@ -68,7 +68,21 @@ ParseResult next_token(Parser *p) {
         return PARSE_OK;
     }
 
-    if (!p->at_line_start || p->current.type == TOK_EOF) {
+    if (p->current.type == TOK_EOF) {
+        // EOL token needs to be filled (if missing) before closing out the file with EOF
+        if (!p->at_line_start) {
+            p->lookahead = p->current;
+            p->has_lookahead = true;
+            p->current = (Token){.type = TOK_EOL, .line = p->lookahead.line};
+            p->at_line_start = true;
+            return PARSE_OK;
+        }
+
+        // setting indent lvl to 0 for EOF will cause the parser to fill the remaining DEDENTs
+        p->current.indent = 0;
+    }
+
+    if (!p->at_line_start) {
         return PARSE_OK;
     }
 
