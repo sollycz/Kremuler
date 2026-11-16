@@ -2,6 +2,7 @@
 #include "precedence_stack.h"
 #include "token.h"
 #include "ast.h"
+#include "parser.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -40,6 +41,10 @@ static void stack_and_ast_free(PrecedenceStack *stack) {
     for (size_t i = 0; i < stack->length; i++) {
         if (stack->items[i].type == STACK_EXPRESSION) {
             ast_free(stack->items[i].ast);
+        }
+        else if ((stack->items[i].type == STACK_TERMINAL) && (stack->items[i].token.type == TOK_ID || stack->items[i].token.type == TOK_STRING_LITERAL)) {
+            free(stack->items[i].token.data.str_val);
+            stack->items[i].token.data.str_val = NULL;
         }
     }
     stack_free(stack);
@@ -287,6 +292,9 @@ static int reduce_expression(PrecedenceStack *stack) {
 
             strcpy(node->as.literal.value.string_val, stack->items[boundary_index + 1].token.data.str_val);
             stack->items[boundary_index + 1].ast = node;
+
+            free(stack->items[boundary_index + 1].token.data.str_val);
+            stack->items[boundary_index + 1].token.data.str_val = NULL;
         }
 
         if (stack->items[boundary_index + 1].token.type == TOK_ID) {
@@ -306,6 +314,9 @@ static int reduce_expression(PrecedenceStack *stack) {
 
             strcpy(node->as.identifier.name, stack->items[boundary_index + 1].token.data.str_val);
             stack->items[boundary_index + 1].ast = node;
+
+            free(stack->items[boundary_index + 1].token.data.str_val);
+            stack->items[boundary_index + 1].token.data.str_val = NULL;
         }
 
         stack->items[boundary_index + 1].type = STACK_EXPRESSION;
@@ -472,8 +483,9 @@ static PrecedenceAction get_action(PrecedenceSymbol stack_symbol, PrecedenceSymb
     }
 }
 
-int parse_expression(Token *token, AstNode **result) {
+int parse_expression(Parser *parser, AstNode **result) {
     *result = NULL;
+    Token *token = &parser->current;
     PrecedenceStack stack;
     if (stack_init(&stack) != true) {
         return 99;
@@ -534,6 +546,10 @@ int parse_expression(Token *token, AstNode **result) {
                     stack_and_ast_free(&stack);
                     return 99;
                 }
+                
+                if (token->type == TOK_STRING_LITERAL || token->type == TOK_ID) {
+                    token->data.str_val = NULL;
+                }
 
                 if (input_symbol == SYMBOL_OPERAND ||
                     input_symbol == SYMBOL_RIGHT_PARENTHESIS) {
@@ -543,6 +559,11 @@ int parse_expression(Token *token, AstNode **result) {
                     needs_operand = true;
                 }
                 
+                ParseResult next_result = next_token(parser);
+                if (next_result != PARSE_OK) {
+                    stack_and_ast_free(&stack);
+                    return next_result;
+                }
                 break;
             }
             case ACTION_PUSH: {
@@ -556,6 +577,10 @@ int parse_expression(Token *token, AstNode **result) {
                     return 99;
                 }
 
+                if (token->type == TOK_STRING_LITERAL || token->type == TOK_ID) {
+                    token->data.str_val = NULL;
+                }
+
                 if (input_symbol == SYMBOL_OPERAND ||
                     input_symbol == SYMBOL_RIGHT_PARENTHESIS) {
                     needs_operand = false;
@@ -564,6 +589,11 @@ int parse_expression(Token *token, AstNode **result) {
                     needs_operand = true;
                 }
 
+                ParseResult next_result = next_token(parser);
+                if (next_result != PARSE_OK) {
+                    stack_and_ast_free(&stack);
+                    return next_result;
+                }
                 break;
             }
             case ACTION_REDUCE: {
