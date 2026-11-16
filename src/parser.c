@@ -143,6 +143,14 @@ ParseResult lookahead_token(Parser *p, TokenType *type) {
     return PARSE_OK;
 }
 
+// checks that the current token has the given type and moves to the next one
+static ParseResult expect(Parser *p, TokenType type) {
+    if (p->current.type != type) {
+        return PARSE_SYNTAX_ERROR;
+    }
+    return next_token(p);
+}
+
 // <functions> -> <function> <functions> | <function_main> <functions> | epsilon
 static ParseResult parse_functions(Parser *p, AstNodeList *functions) {
     (void)p;
@@ -158,11 +166,7 @@ ParseResult parse_program(Parser *p, AstNode **out) {
         return result;
     }
 
-    if (p->current.type != TOK_KW_IMPORT) {
-        return PARSE_SYNTAX_ERROR;
-    }
-
-    result = next_token(p);
+    result = expect(p, TOK_KW_IMPORT);
     if (result != PARSE_OK) {
         return result;
     }
@@ -177,27 +181,18 @@ ParseResult parse_program(Parser *p, AstNode **out) {
     if (result != PARSE_OK) {
         return result;
     }
-    if (p->current.type != TOK_DOT) {
-        return PARSE_SYNTAX_ERROR;
-    }
 
-    result = next_token(p);
+    result = expect(p, TOK_DOT);
     if (result != PARSE_OK) {
         return result;
     }
-    if (p->current.type != TOK_MULTIPLY) {
-        return PARSE_SYNTAX_ERROR;
-    }
 
-    result = next_token(p);
+    result = expect(p, TOK_MULTIPLY);
     if (result != PARSE_OK) {
         return result;
     }
-    if (p->current.type != TOK_EOL) {
-        return PARSE_SYNTAX_ERROR;
-    }
 
-    result = next_token(p);
+    result = expect(p, TOK_EOL);
     if (result != PARSE_OK) {
         return result;
     }
