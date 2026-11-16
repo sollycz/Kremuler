@@ -36,6 +36,15 @@ typedef enum {
     REDUCTION_UNIT
 } ReductionType;
 
+static void stack_and_ast_free(PrecedenceStack *stack) {
+    for (size_t i = 0; i < stack->length; i++) {
+        if (stack->items[i].type == STACK_EXPRESSION) {
+            ast_free(stack->items[i].ast);
+        }
+    }
+    stack_free(stack);
+}
+
 static bool token_to_symbol(TokenType type, bool needs_operand, PrecedenceSymbol *symbol) {
     switch (type) {
         case TOK_PLUS:
@@ -463,7 +472,8 @@ static PrecedenceAction get_action(PrecedenceSymbol stack_symbol, PrecedenceSymb
     }
 }
 
-int parse_expression(Token *token) {
+int parse_expression(Token *token, AstNode **result) {
+    *result = NULL;
     PrecedenceStack stack;
     if (stack_init(&stack) != true) {
         return 99;
@@ -486,19 +496,20 @@ int parse_expression(Token *token) {
             input_symbol = SYMBOL_END;
         }
         else if (token_to_symbol(token->type, needs_operand, &input_symbol) != true) {
-            stack_free(&stack);
+            stack_and_ast_free(&stack);
             return 2;
         }
 
         size_t terminal_index;
         if (stack_take_top_terminal(&stack, &terminal_index) != true) {
-            stack_free(&stack);
+            stack_and_ast_free(&stack);
             return 99;
         }
 
         if (input_symbol == SYMBOL_END && stack.length == 2 &&
             is_terminal(&stack.items[0], SYMBOL_END) && 
             stack.items[1].type == STACK_EXPRESSION) {
+                *result = stack.items[1].ast;
                 stack_free(&stack);
                 return 0;
         }
@@ -515,12 +526,12 @@ int parse_expression(Token *token) {
                 StackItem boundary = {0};
                 boundary.type = STACK_BOUNDARY;
                 if (stack_insert(&stack, terminal_index + 1, boundary) != true) {
-                    stack_free(&stack);
+                    stack_and_ast_free(&stack);
                     return 99;
                 }
 
                 if (stack_push(&stack, item) != true) {
-                    stack_free(&stack);
+                    stack_and_ast_free(&stack);
                     return 99;
                 }
 
@@ -541,7 +552,7 @@ int parse_expression(Token *token) {
                 item.token = *token;
 
                 if (stack_push(&stack, item) != true) {
-                    stack_free(&stack);
+                    stack_and_ast_free(&stack);
                     return 99;
                 }
 
@@ -558,18 +569,18 @@ int parse_expression(Token *token) {
             case ACTION_REDUCE: {
                 int result = reduce_expression(&stack);
                 if (result != 0) {
-                    stack_free(&stack);
+                    stack_and_ast_free(&stack);
                     return result;
                 } 
                 break;
             }
 
             case ACTION_ERROR:
-                stack_free(&stack);
+                stack_and_ast_free(&stack);
                 return 2;
 
             default:
-                stack_free(&stack);
+                stack_and_ast_free(&stack);
                 return 99;
         }
     }

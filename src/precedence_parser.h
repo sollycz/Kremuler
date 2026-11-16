@@ -1,6 +1,7 @@
 #ifndef PRECEDENCE_PARSER_H
 #define PRECEDENCE_PARSER_H
 #include "token.h"
+#include "ast.h"
 
 typedef enum {
     SYMBOL_PLUS,
@@ -31,6 +32,6 @@ typedef enum {
     ACTION_ERROR
 } PrecedenceAction;
 
-int parse_expression(Token *current);
+int parse_expression(Token *current, AstNode **result);
 
 #endif
