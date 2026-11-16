@@ -340,7 +340,42 @@ static int reduce_expression(PrecedenceStack *stack) {
             return 99;
         }
 
-        stack->items[boundary_index] = stack->items[boundary_index + 2]; 
+        if (stack->items[boundary_index + 1].token.type == TOK_MINUS || stack->items[boundary_index + 1].token.type == TOK_PLUS) {
+            AstNode *node = ast_new(AST_UNARY_OPERATOR, stack->items[boundary_index + 1].token.line);
+            if (node == NULL) {
+                return 99;
+            }
+
+            node->type = TYPE_UNKNOWN;
+            if (stack->items[boundary_index + 1].token.type == TOK_MINUS) {
+                node->as.unary.operator_type = OP_NEG;
+            } else {
+                node->as.unary.operator_type = OP_POS;
+            }
+            node->as.unary.operand = stack->items[boundary_index + 2].ast;
+            stack->items[boundary_index] = stack->items[boundary_index + 2];
+            stack->items[boundary_index].ast = node;
+
+        }
+
+        /*      UNCOMMENT AFTER ADDING OP_NOT TO AST.H
+        if (stack->items[boundary_index + 1].token.type == TOK_NOT) {
+            AstNode *node = ast_new(AST_UNARY_OPERATOR, stack->items[boundary_index + 1].token.line);
+            if (node == NULL) {
+                return 99;
+                }
+
+                node->type = TYPE_UNKNOWN;
+                node->as.unary.operator_type = OP_NOT;
+                node->as.unary.operand = stack->items[boundary_index + 2].ast;
+                stack->items[boundary_index] = stack->items[boundary_index + 2];
+                stack->items[boundary_index].ast = node;
+
+            } */
+
+        if (stack->items[boundary_index + 1].token.type == TOK_NOT) {
+            return 2;
+        }
 
         stack->length -= 2;
         return 0;
