@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+
 static const char precedence_table[19][19] = {
     {'>', '>', '<', '<', '>', '>', '>', '>', '>', '>', '<', '<', '<', '>', '>', '<', '>', '<', '>'}, // +
     {'>', '>', '<', '<', '>', '>', '>', '>', '>', '>', '<', '<', '<', '>', '>', '<', '>', '<', '>'}, // -
@@ -483,6 +484,103 @@ static PrecedenceAction get_action(PrecedenceSymbol stack_symbol, PrecedenceSymb
     }
 }
 
+int parse_function_call(Parser *parser, AstNode **result) {
+    *result = NULL;
+    Token *token = &parser->current;
+    AstNode *node = ast_new(AST_CALL, token->line);
+    if (node == NULL) {
+        return 99;
+    }
+
+    node->type = TYPE_UNKNOWN;
+    size_t length = strlen(token->data.str_val) + 1;
+
+    node->as.call.name = malloc(length);
+    if (node->as.call.name == NULL) {
+        free(node);
+        return 99;
+    }
+
+    strcpy(node->as.call.name, token->data.str_val);
+
+    ParseResult result_next_token = next_token(parser);
+    if (result_next_token != PARSE_OK) {
+        ast_free(node);
+        return result_next_token;
+    }
+
+    result_next_token = next_token(parser);
+    if (result_next_token != PARSE_OK) {
+        ast_free(node);
+        return result_next_token;
+    }
+
+    if (token->type == TOK_RIGHT_PARENTHESIS) {
+        result_next_token = next_token(parser);
+        if (result_next_token != PARSE_OK) {
+            ast_free(node);
+            return result_next_token;
+        }
+
+        *result = node;
+        return 0;
+    }
+
+    while (1) {
+        AstNode *argument = NULL;
+        ParseResult result_parse_expression = parse_expression(parser, &argument);
+        if (result_parse_expression != PARSE_OK) {
+            ast_free(node);
+            return result_parse_expression;
+        }
+
+        bool result_ast_list_push = ast_list_push(&node->as.call.args, argument);
+        if (result_ast_list_push != true) {
+            ast_free(node);
+            ast_free(argument);
+            return 99;
+        }
+
+        if (token->type == TOK_RIGHT_PARENTHESIS) {
+            result_next_token = next_token(parser);
+            if (result_next_token != PARSE_OK) {
+                ast_free(node);
+                return result_next_token;
+            }
+            
+            *result = node;
+            return 0;
+        }
+
+        if (token->type != TOK_COMMA) {
+            ast_free(node);
+            return 2;
+        }
+
+        result_next_token = next_token(parser);
+        if (result_next_token != PARSE_OK) {
+            ast_free(node);
+            return result_next_token;
+        }
+
+        if (token->type == TOK_RIGHT_PARENTHESIS) {
+            if (token->lf_before == false) {
+                ast_free(node);
+                return 2;
+            }
+
+            result_next_token = next_token(parser);
+            if (result_next_token != PARSE_OK) {
+                ast_free(node);
+                return result_next_token;
+            }
+
+            *result = node;
+            return 0;
+        }
+    }
+}
+
 int parse_expression(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
@@ -505,6 +603,36 @@ int parse_expression(Parser *parser, AstNode **result) {
     size_t parentheses_depth = 0;
 
     while (1) {
+
+        TokenType lookahead;
+        if (token->type == TOK_ID && needs_operand == true) {
+            ParseResult result = lookahead_token(parser, &lookahead);
+            if (result != PARSE_OK) {
+                stack_and_ast_free(&stack);
+                return result;
+            }
+            if (lookahead == TOK_LEFT_PARENTHESIS) {
+                AstNode *call = NULL;
+                int result = parse_function_call(parser, &call);
+                if (result != 0) {
+                    stack_and_ast_free(&stack);
+                    return result;
+                }
+
+                StackItem item = {0};
+                item.type = STACK_EXPRESSION;
+                item.ast = call;
+
+                if (stack_push(&stack, item) != true) {
+                    stack_and_ast_free(&stack);
+                    ast_free(call);
+                    return 99;
+                }
+
+                needs_operand = false;
+                continue;
+            }
+        }
 
         if (token->type == TOK_EOL || token->type == TOK_EOF) {
             input_symbol = SYMBOL_END;
