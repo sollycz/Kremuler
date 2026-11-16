@@ -151,10 +151,78 @@ static ParseResult expect(Parser *p, TokenType type) {
     return next_token(p);
 }
 
+// <function> -> TOK_KW_DEF TOK_ID TOK_LEFT_PARENTHESIS <parameters> TOK_RIGHT_PARENTHESIS <optional_type> TOK_ASSIGN
+// <function_body>
+static ParseResult parse_function(Parser *p, AstNode **out) {
+    (void)p;
+    (void)out;
+    return PARSE_SYNTAX_ERROR;
+}
+
+// <function_main> -> TOK_AT TOK_ID <optional_eol> <function>
+static ParseResult parse_function_main(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    // TOK_AT
+    result = expect(p, TOK_AT);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // TOK_ID
+    if (p->current.type != TOK_ID) {
+        return PARSE_SYNTAX_ERROR;
+    }
+    if (strcmp(p->current.data.str_val, "main") != 0) {
+        return PARSE_SYNTAX_ERROR;
+    }
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // <optional_eol>
+    if (p->current.type == TOK_EOL) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+    }
+
+    result = parse_function(p, out);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    (*out)->as.function.is_main_func = true;
+    return PARSE_OK;
+}
+
 // <functions> -> <function> <functions> | <function_main> <functions> | epsilon
 static ParseResult parse_functions(Parser *p, AstNodeList *functions) {
-    (void)p;
-    (void)functions;
+    while (p->current.type == TOK_KW_DEF || p->current.type == TOK_AT) {
+        AstNode *function = NULL;
+        ParseResult result;
+
+        if (p->current.type == TOK_KW_DEF) {
+            result = parse_function(p, &function);
+        } else { // TOK_AT
+            result = parse_function_main(p, &function);
+        }
+
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        bool successful_push;
+        successful_push = ast_list_push(functions, function);
+
+        if (successful_push == false) {
+            ast_free(function);
+            return PARSE_INTERNAL_ERROR;
+        }
+    }
+
     return PARSE_OK;
 }
 
