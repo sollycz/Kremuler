@@ -7,6 +7,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 
+#include "ast.h"
 #include "token.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -44,5 +45,8 @@ ParseResult next_token(Parser *p);
 // stores the type of the token after p->current into *type without moving the parser to it
 // (also must not be called when current token is TOK_EOL, since that would skip the indentation of the next line)
 ParseResult lookahead_token(Parser *p, TokenType *type);
+
+// parses the whole input file and stores the root AST node into 'out'
+ParseResult parse_program(Parser *p, AstNode **out);
 
 #endif

@@ -7,6 +7,7 @@
 #include "parser.h"
 #include "scanner.h"
 #include <stdlib.h>
+#include <string.h>
 
 // frees the string of a token if it still has one
 static void token_free(Token *token) {
@@ -139,5 +140,84 @@ ParseResult lookahead_token(Parser *p, TokenType *type) {
     }
 
     *type = p->lookahead.type;
+    return PARSE_OK;
+}
+
+// <functions> -> <function> <functions> | <function_main> <functions> | epsilon
+static ParseResult parse_functions(Parser *p, AstNodeList *functions) {
+    (void)p;
+    (void)functions;
+    return PARSE_OK;
+}
+
+// <program> -> TOK_KW_IMPORT TOK_ID TOK_DOT TOK_MULTIPLY TOK_EOL <functions> TOK_EOF
+ParseResult parse_program(Parser *p, AstNode **out) {
+    ParseResult result;
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    if (p->current.type != TOK_KW_IMPORT) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+    if (p->current.type != TOK_ID) {
+        return PARSE_SYNTAX_ERROR;
+    }
+    if (strcmp(p->current.data.str_val, "ifj26") != 0) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+    if (p->current.type != TOK_DOT) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+    if (p->current.type != TOK_MULTIPLY) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+    if (p->current.type != TOK_EOL) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    AstNode *node = ast_new(AST_PROGRAM, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    result = parse_functions(p, &node->as.program.functions);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    if (p->current.type != TOK_EOF) {
+        ast_free(node);
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    *out = node;
     return PARSE_OK;
 }
