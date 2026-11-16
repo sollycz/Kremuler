@@ -634,6 +634,62 @@ int parse_expression(Parser *parser, AstNode **result) {
             }
         }
 
+        if (token->type == TOK_DOT) {
+            if (needs_operand == true) {
+                stack_and_ast_free(&stack);
+                return 2;
+            }
+
+            if (stack.items[stack.length - 1].type != STACK_EXPRESSION) {
+                int reduction_result = reduce_expression(&stack);
+
+                if (reduction_result != 0) {
+                    stack_and_ast_free(&stack);
+                    return reduction_result;
+                }
+            }
+
+            ParseResult next_result = next_token(parser);
+            if (next_result != PARSE_OK) {
+                stack_and_ast_free(&stack);
+                return next_result;
+            }
+
+            if (token->type != TOK_ID) {
+                stack_and_ast_free(&stack);
+                return 2;
+            }
+
+            AstNode *node = ast_new(AST_CALL, token->line);
+            if (node == NULL) {
+                stack_and_ast_free(&stack);
+                return 99;
+            }
+            
+            node->type = TYPE_UNKNOWN;
+            node->as.call.name = malloc(strlen(token->data.str_val) + 1);
+            if (node->as.call.name == NULL) {
+                ast_free(node);
+                stack_and_ast_free(&stack);
+                return 99;
+            }
+            strcpy(node->as.call.name, token->data.str_val);
+
+            if (ast_list_push(&node->as.call.args, stack.items[stack.length - 1].ast) != true) {
+                ast_free(node);
+                stack_and_ast_free(&stack);
+                return 99;
+            }
+            stack.items[stack.length - 1].ast = node;
+
+            next_result = next_token(parser);
+            if (next_result != PARSE_OK) {
+                stack_and_ast_free(&stack);
+                return next_result;
+            }
+            continue;
+        }
+
         if (token->type == TOK_EOL || token->type == TOK_EOF) {
             input_symbol = SYMBOL_END;
         }
