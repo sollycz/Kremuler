@@ -40,6 +40,13 @@ typedef enum {
     ACTION_ERROR
 } PrecedenceAction;
 
+/**
+ * @brief parse an expression and create its AST
+ * @param[in, out] parser positioned at the first expression token
+ * @param[out] result expression AST, or NULL on failure
+ * @return 0 on success, otherwise parser error code
+ * @note The expression terminator is left unconsumed.
+ */
 int parse_expression(Parser *parser, AstNode **result);
 
 #endif

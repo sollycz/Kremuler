@@ -46,6 +46,11 @@ typedef enum {
     REDUCTION_UNIT
 } ReductionType;
 
+/**
+ * @brief creates a dynamically allocated copy of a string
+ * @param[in] text string to copy
+ * @return pointer to the copy, or NULL if malloc fails
+ */
 static char *copy_string(const char *text) {
     size_t length = strlen(text) + 1;
     char *copy = malloc(length);
@@ -57,6 +62,10 @@ static char *copy_string(const char *text) {
     return copy;
 }
 
+/**
+ * @brief frees the stack, its AST nodes and owned token strings.
+ * @param[in,out] stack to free.
+ */
 static void stack_and_ast_free(PrecedenceStack *stack) {
     for (size_t i = 0; i < stack->length; i++) {
         if (stack->items[i].type == STACK_EXPRESSION) {
@@ -70,6 +79,13 @@ static void stack_and_ast_free(PrecedenceStack *stack) {
     stack_free(stack);
 }
 
+/**
+ * @brief converts token type to precedence symbol
+ * @param[in] type of token
+ * @param[in] needs_operand when true unary +/-, else binary +/-
+ * @param[out] symbol receive converted symbol on success
+ * @return true if token can be converted, else false
+ */
 static bool token_to_symbol(TokenType type, bool needs_operand, PrecedenceSymbol *symbol) {
     switch (type) {
         case TOK_PLUS:
@@ -162,11 +178,41 @@ static bool token_to_symbol(TokenType type, bool needs_operand, PrecedenceSymbol
     }
 }
 
+/**
+ * @brief uses precedence table to get the right action
+ * @param[in] stack_symbol y-axis of the precedence table
+ * @param[in] input_symbol x-axis of the precedence table
+ * @return corresponding action, or ACTION_ERROR if relation is invalid
+ */
+static PrecedenceAction get_action(PrecedenceSymbol stack_symbol, PrecedenceSymbol input_symbol) {
+    switch(precedence_table[stack_symbol][input_symbol]) {
+        case '<':
+            return ACTION_BEGIN_AND_PUSH;
+        case '=':
+            return ACTION_PUSH;
+        case '>':
+        return ACTION_REDUCE;
+        default:
+        return ACTION_ERROR;
+    }
+}
+
+/**
+ * @brief checks whether an item is a terminal with the specified symbol
+ * @param[in] item to check
+ * @param[in] symbol that is expected
+ * @return true if both type and symbol match, otherwise false
+ */
 static bool is_terminal(const StackItem *item, PrecedenceSymbol symbol)
 {
     return item->type == STACK_TERMINAL && item->symbol == symbol;
 }
 
+/**
+ * @brief determine which reduction rule to choose
+ * @param[in] stack to look into
+ * @return according reduction type, or REDUCTION_INVALID if no rule matches
+ */
 static ReductionType get_reduction_type(const PrecedenceStack *stack)
 {
     size_t boundary;
@@ -248,6 +294,12 @@ static ReductionType get_reduction_type(const PrecedenceStack *stack)
     }
 }
 
+/**
+ * @brief creates a literal or identifier AST node from a token
+ * @param[in] token to create a node from
+ * @param[out] result receives a new node, or NULL on failure
+ * @return 0 on success, otherwise error code
+ */
 static int create_node_operand(const Token *token, AstNode **result) {
     *result = NULL;
 
@@ -310,6 +362,11 @@ static int create_node_operand(const Token *token, AstNode **result) {
     return 0;
 }
 
+/**
+ * @brief applies one reduction rule from precedence table to the precedence stack
+ * @param[in, out] stack to make a reduction from
+ * @return 0 on success, otherwise error code
+ */
 static int reduce_expression(PrecedenceStack *stack) {
     ReductionType reduction = get_reduction_type(stack);
                 
@@ -482,19 +539,12 @@ static int reduce_expression(PrecedenceStack *stack) {
     return 2;
 }
 
-static PrecedenceAction get_action(PrecedenceSymbol stack_symbol, PrecedenceSymbol input_symbol) {
-    switch(precedence_table[stack_symbol][input_symbol]) {
-        case '<':
-            return ACTION_BEGIN_AND_PUSH;
-        case '=':
-            return ACTION_PUSH;
-        case '>':
-        return ACTION_REDUCE;
-        default:
-        return ACTION_ERROR;
-    }
-}
-
+/**
+ * @brief parse a function call and create AST
+ * @param[in, out] parser provider for the input tokens
+ * @param[out] result receives the call node, or NULL on failure
+ * @return 0 on success, otherwise a parser error code
+ */
 int parse_function_call(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
@@ -588,6 +638,12 @@ int parse_function_call(Parser *parser, AstNode **result) {
     }
 }
 
+/**
+ * @brief parse an interpolated string and create AST
+ * @param[in, out] parser provider for the input tokens
+ * @param[out] result receives the string AST, or NULL on failure
+ * @return 0 on success, otherwise parser error code
+ */
 int parse_interpolated_string(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
