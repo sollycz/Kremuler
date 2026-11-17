@@ -47,6 +47,9 @@ void parser_destroy(Parser *p) {
 
     free(p->indent_stack);
     *p = (Parser){0};
+
+    // free scanner interpolation states, even after parsing errors
+    interpolation_free();
 }
 
 ParseResult next_token(Parser *p) {

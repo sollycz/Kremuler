@@ -581,6 +581,157 @@ int parse_function_call(Parser *parser, AstNode **result) {
     }
 }
 
+int parse_interpolated_string(Parser *parser, AstNode **result) {
+    *result = NULL;
+    Token *token = &parser->current;
+
+    // skip TOK_INTERPOLATED_BEGIN and read the first part.
+    ParseResult result_next_token = next_token(parser);
+    if (result_next_token != PARSE_OK) {
+        return result_next_token;
+    }
+
+    // start with an empty string and append each interpolation part.
+    AstNode *node = ast_new(AST_LITERAL, token->line);
+    if (node == NULL) {
+        return 99;
+    }
+
+    node->type = TYPE_STRING;
+    node->as.literal.value.string_val = malloc(sizeof(char));
+    if (node->as.literal.value.string_val == NULL) {
+        ast_free(node);
+        return 99;
+    }
+    node->as.literal.value.string_val[0] = '\0';
+
+    // go through the interpolated 
+    while (token->type != TOK_INTERPOLATED_END) {
+        AstNode *part = NULL;
+
+        // copy the text into AST before next_token() frees the token.
+        if (token->type == TOK_STRING_LITERAL) {
+            part = ast_new(AST_LITERAL, token->line);
+            if (part == NULL) {
+                ast_free(node);
+                return 99;
+            }
+
+            part->type = TYPE_STRING;
+            part->as.literal.value.string_val = malloc(strlen(token->data.str_val) + 1);
+            if (part->as.literal.value.string_val == NULL) {
+                ast_free(node);
+                ast_free(part);
+                return 99;
+            }
+            strcpy(part->as.literal.value.string_val, token->data.str_val);
+        }
+        // create an identifier node for the var referenced by $name.
+        else if (token->type == TOK_ID) {
+            part = ast_new(AST_IDENTIFIER, token->line);
+            if (part == NULL) {
+                ast_free(node);
+                return 99;
+            }
+
+            part->type = TYPE_UNKNOWN;
+            part->as.identifier.name = malloc(strlen(token->data.str_val) + 1);
+            if (part->as.identifier.name == NULL) {
+                ast_free(node);
+                ast_free(part);
+                return 99;
+            }
+            strcpy(part->as.identifier.name, token->data.str_val);
+        }
+        // skip TOK_INTERPOLATION_BEGIN and parse the expression inside curly brackets
+        else if (token->type == TOK_INTERPOLATION_BEGIN) {
+            ParseResult result_next_token = next_token(parser);
+            if (result_next_token != PARSE_OK) {
+                ast_free(node);
+                return result_next_token;
+            }
+
+            int parse_result = parse_expression(parser, &part);
+            if (parse_result != 0) {
+                ast_free(node);
+                ast_free(part);
+                return parse_result;
+            }
+
+            if (token->type != TOK_INTERPOLATION_END) {
+                ast_free(node);
+                ast_free(part);
+                return 2;
+            }
+        }
+        else {
+            ast_free(part);
+            ast_free(node);
+            return 2;
+        }
+
+        // wrap inserted ${} or $id in toStr() to get a plain text
+        if (token->type == TOK_ID || token->type == TOK_INTERPOLATION_END) {
+            AstNode *conversion_to_string = ast_new(AST_CALL, part->line);
+            if (conversion_to_string == NULL) {
+                ast_free(part);
+                ast_free(node);
+                return 99;
+            }
+
+            conversion_to_string->type = TYPE_STRING;
+            conversion_to_string->as.call.name = malloc(sizeof("toStr"));
+            if (conversion_to_string->as.call.name == NULL) {
+                ast_free(conversion_to_string);
+                ast_free(node);
+                ast_free(part);
+                return 99;
+            }
+            strcpy(conversion_to_string->as.call.name, "toStr");
+
+            if (ast_list_push(&conversion_to_string->as.call.args, part) != true) {
+                ast_free(conversion_to_string);
+                ast_free(node);
+                ast_free(part);
+                return 99;
+            }
+
+            part = conversion_to_string;
+        }
+
+        // connect all the text to one whole string
+        AstNode *connect = ast_new(AST_BINARY_OPERATOR, part->line);
+        if (connect == NULL) {
+            ast_free(node);
+            ast_free(part);
+            return 99;
+        }
+
+        connect->type = TYPE_STRING;
+        connect->as.binary.operator_type = OP_ADD;
+        connect->as.binary.left = node;
+        connect->as.binary.right = part;
+        node = connect;
+
+        ParseResult result_next_token = next_token(parser);
+        if (result_next_token != PARSE_OK) {
+            ast_free(node);
+            return result_next_token;
+        }
+    }
+
+    // skip TOK_INTERPOLATED_END
+    result_next_token = next_token(parser);
+    if (result_next_token != PARSE_OK) {
+        ast_free(node);
+        return result_next_token;
+    }
+    
+    // transfer completed AST to the caller
+    *result = node;
+    return 0;
+}
+
 int parse_expression(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
@@ -603,6 +754,28 @@ int parse_expression(Parser *parser, AstNode **result) {
     size_t parentheses_depth = 0;
 
     while (1) {
+
+        // parse the interpolated string as one whole expression.
+        if (token->type == TOK_INTERPOLATED_BEGIN && needs_operand == true) {
+            AstNode *string = NULL;
+            int result = parse_interpolated_string(parser, &string);
+            if (result != 0) {
+                stack_and_ast_free(&stack);
+                return result;
+            }
+
+            StackItem item = {0};
+            item.type = STACK_EXPRESSION;
+            item.ast = string;
+            if (stack_push(&stack, item) != true) {
+                stack_and_ast_free(&stack);
+                ast_free(string);
+                return 99;
+            }
+
+            needs_operand = false;
+            continue;
+        }
 
         TokenType lookahead;
         if (token->type == TOK_ID && needs_operand == true) {
@@ -697,6 +870,9 @@ int parse_expression(Parser *parser, AstNode **result) {
             input_symbol = SYMBOL_END;
         } 
         else if (token->type == TOK_COMMA && parentheses_depth == 0) {
+            input_symbol = SYMBOL_END;
+        }
+        else if (token->type == TOK_INTERPOLATION_END && parentheses_depth == 0) {
             input_symbol = SYMBOL_END;
         }
         else if (token_to_symbol(token->type, needs_operand, &input_symbol) != true) {

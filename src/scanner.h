@@ -26,4 +26,6 @@ typedef enum {
 */
 ScannerErrorCode scanner_get_token(Token *token);
 
+void interpolation_free(void);
+
 #endif

@@ -254,7 +254,7 @@ static ScannerErrorCode interpolation_pop(void) {
 /**
  * @brief free the interpolation state stack and reset the current state
  */
-static void interpolation_free(void) {
+void interpolation_free(void) {
     while (current_interpolation.previous != NULL) {
         InterpolationState *stack_node = current_interpolation.previous;
         current_interpolation.previous = stack_node->previous;
