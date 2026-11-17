@@ -221,10 +221,10 @@ static ReductionType get_reduction_type(const PrecedenceStack *stack)
         return REDUCTION_INVALID;
     }
 
-    size_t count = stack->length - boundary - 1;
+    size_t rule_length = stack->length - boundary - 1;
     const StackItem *first = &stack->items[boundary + 1];
 
-    switch (count) {
+    switch (rule_length) {
         case 1:
             if (is_terminal(first, SYMBOL_OPERAND)) {
                 return REDUCTION_OPERAND;
@@ -560,23 +560,23 @@ int parse_function_call(Parser *parser, AstNode **result) {
         return 99;
     }
 
-    ParseResult result_next_token = next_token(parser);
-    if (result_next_token != PARSE_OK) {
+    ParseResult status = next_token(parser);
+    if (status != PARSE_OK) {
         ast_free(node);
-        return result_next_token;
+        return status;
     }
 
-    result_next_token = next_token(parser);
-    if (result_next_token != PARSE_OK) {
+    status = next_token(parser);
+    if (status != PARSE_OK) {
         ast_free(node);
-        return result_next_token;
+        return status;
     }
 
     if (token->type == TOK_RIGHT_PARENTHESIS) {
-        result_next_token = next_token(parser);
-        if (result_next_token != PARSE_OK) {
+        status = next_token(parser);
+        if (status != PARSE_OK) {
             ast_free(node);
-            return result_next_token;
+            return status;
         }
 
         *result = node;
@@ -585,24 +585,24 @@ int parse_function_call(Parser *parser, AstNode **result) {
 
     while (1) {
         AstNode *argument = NULL;
-        ParseResult result_parse_expression = parse_expression(parser, &argument);
-        if (result_parse_expression != PARSE_OK) {
+        ParseResult status = parse_expression(parser, &argument);
+        if (status != PARSE_OK) {
             ast_free(node);
-            return result_parse_expression;
+            return status;
         }
 
-        bool result_ast_list_push = ast_list_push(&node->as.call.args, argument);
-        if (result_ast_list_push != true) {
+        bool argument_added = ast_list_push(&node->as.call.args, argument);
+        if (argument_added != true) {
             ast_free(node);
             ast_free(argument);
             return 99;
         }
 
         if (token->type == TOK_RIGHT_PARENTHESIS) {
-            result_next_token = next_token(parser);
-            if (result_next_token != PARSE_OK) {
+            status = next_token(parser);
+            if (status != PARSE_OK) {
                 ast_free(node);
-                return result_next_token;
+                return status;
             }
             
             *result = node;
@@ -614,10 +614,10 @@ int parse_function_call(Parser *parser, AstNode **result) {
             return 2;
         }
 
-        result_next_token = next_token(parser);
-        if (result_next_token != PARSE_OK) {
+        status = next_token(parser);
+        if (status != PARSE_OK) {
             ast_free(node);
-            return result_next_token;
+            return status;
         }
 
         if (token->type == TOK_RIGHT_PARENTHESIS) {
@@ -626,10 +626,10 @@ int parse_function_call(Parser *parser, AstNode **result) {
                 return 2;
             }
 
-            result_next_token = next_token(parser);
-            if (result_next_token != PARSE_OK) {
+            status = next_token(parser);
+            if (status != PARSE_OK) {
                 ast_free(node);
-                return result_next_token;
+                return status;
             }
 
             *result = node;
@@ -649,9 +649,9 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
     Token *token = &parser->current;
 
     // skip TOK_INTERPOLATED_BEGIN and read the first part.
-    ParseResult result_next_token = next_token(parser);
-    if (result_next_token != PARSE_OK) {
-        return result_next_token;
+    ParseResult status = next_token(parser);
+    if (status != PARSE_OK) {
+        return status;
     }
 
     // start with an empty string and append each interpolation part.
@@ -682,17 +682,17 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
         }
         // skip TOK_INTERPOLATION_BEGIN and parse the expression inside curly brackets
         else if (token->type == TOK_INTERPOLATION_BEGIN) {
-            ParseResult result_next_token = next_token(parser);
-            if (result_next_token != PARSE_OK) {
+            ParseResult status = next_token(parser);
+            if (status != PARSE_OK) {
                 ast_free(node);
-                return result_next_token;
+                return status;
             }
 
-            int parse_result = parse_expression(parser, &part);
-            if (parse_result != 0) {
+            status = parse_expression(parser, &part);
+            if (status != 0) {
                 ast_free(node);
                 ast_free(part);
-                return parse_result;
+                return status;
             }
 
             if (token->type != TOK_INTERPOLATION_END) {
@@ -750,18 +750,18 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
         connect->as.binary.right = part;
         node = connect;
 
-        ParseResult result_next_token = next_token(parser);
-        if (result_next_token != PARSE_OK) {
+        ParseResult status = next_token(parser);
+        if (status != PARSE_OK) {
             ast_free(node);
-            return result_next_token;
+            return status;
         }
     }
 
     // skip TOK_INTERPOLATED_END
-    result_next_token = next_token(parser);
-    if (result_next_token != PARSE_OK) {
+    status = next_token(parser);
+    if (status != PARSE_OK) {
         ast_free(node);
-        return result_next_token;
+        return status;
     }
     
     // transfer completed AST to the caller
