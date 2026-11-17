@@ -215,14 +215,14 @@ static bool is_terminal(const StackItem *item, PrecedenceSymbol symbol)
  */
 static ReductionType get_reduction_type(const PrecedenceStack *stack)
 {
-    size_t boundary;
+    size_t boundary_index;
 
-    if (stack_take_top_boundary(stack, &boundary) != true) {
+    if (stack_take_top_boundary(stack, &boundary_index) != true) {
         return REDUCTION_INVALID;
     }
 
-    size_t rule_length = stack->length - boundary - 1;
-    const StackItem *first = &stack->items[boundary + 1];
+    size_t rule_length = stack->length - boundary_index - 1;
+    const StackItem *first = &stack->items[boundary_index + 1];
 
     switch (rule_length) {
         case 1:
@@ -232,7 +232,7 @@ static ReductionType get_reduction_type(const PrecedenceStack *stack)
             return REDUCTION_INVALID;
 
         case 2: {
-            const StackItem *second = &stack->items[boundary + 2];
+            const StackItem *second = &stack->items[boundary_index + 2];
 
             if (is_terminal(first, SYMBOL_UNARY_PLUS)  || 
                 is_terminal(first, SYMBOL_UNARY_MINUS) || 
@@ -251,8 +251,8 @@ static ReductionType get_reduction_type(const PrecedenceStack *stack)
         }
 
         case 3: {
-            const StackItem *second = &stack->items[boundary + 2];
-            const StackItem *third = &stack->items[boundary + 3];
+            const StackItem *second = &stack->items[boundary_index + 2];
+            const StackItem *third = &stack->items[boundary_index + 3];
 
             if (first->type == STACK_EXPRESSION) {
                 if (second->type == STACK_TERMINAL && (
@@ -621,6 +621,7 @@ int parse_function_call(Parser *parser, AstNode **result) {
         }
 
         if (token->type == TOK_RIGHT_PARENTHESIS) {
+            // line feed is required between a trailing comma and a right parenthesis
             if (token->lf_before == false) {
                 ast_free(node);
                 return 2;
@@ -648,7 +649,6 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
 
-    // skip TOK_INTERPOLATED_BEGIN and read the first part.
     ParseResult status = next_token(parser);
     if (status != PARSE_OK) {
         return status;
@@ -666,13 +666,12 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
         ast_free(node);
         return 99;
     }
+    // empty prefix handles s""
     node->as.literal.value.string_val[0] = '\0';
 
-    // go through the interpolated 
     while (token->type != TOK_INTERPOLATED_END) {
         AstNode *part = NULL;
 
-        // create a string literal or identifier node with its own text copy.
         if (token->type == TOK_STRING_LITERAL || token->type == TOK_ID) {
             int status = create_node_operand(token, &part);
             if (status != 0) {
@@ -680,7 +679,6 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
                 return status;
             }
         }
-        // skip TOK_INTERPOLATION_BEGIN and parse the expression inside curly brackets
         else if (token->type == TOK_INTERPOLATION_BEGIN) {
             ParseResult status = next_token(parser);
             if (status != PARSE_OK) {
@@ -736,7 +734,6 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
             part = conversion_to_string;
         }
 
-        // connect all the text to one whole string
         AstNode *connect = ast_new(AST_BINARY_OPERATOR, part->line);
         if (connect == NULL) {
             ast_free(node);
@@ -757,14 +754,12 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
         }
     }
 
-    // skip TOK_INTERPOLATED_END
     status = next_token(parser);
     if (status != PARSE_OK) {
         ast_free(node);
         return status;
     }
     
-    // transfer completed AST to the caller
     *result = node;
     return 0;
 }
