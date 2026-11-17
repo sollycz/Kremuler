@@ -46,6 +46,17 @@ typedef enum {
     REDUCTION_UNIT
 } ReductionType;
 
+static char *copy_string(const char *text) {
+    size_t length = strlen(text) + 1;
+    char *copy = malloc(length);
+    if (copy == NULL) {
+        return NULL;
+    }
+
+    strcpy(copy, text);
+    return copy;
+}
+
 static void stack_and_ast_free(PrecedenceStack *stack) {
     for (size_t i = 0; i < stack->length; i++) {
         if (stack->items[i].type == STACK_EXPRESSION) {
@@ -501,15 +512,11 @@ int parse_function_call(Parser *parser, AstNode **result) {
     }
 
     node->type = TYPE_UNKNOWN;
-    size_t length = strlen(token->data.str_val) + 1;
-
-    node->as.call.name = malloc(length);
+    node->as.call.name = copy_string(token->data.str_val);
     if (node->as.call.name == NULL) {
-        free(node);
+        ast_free(node);
         return 99;
     }
-
-    strcpy(node->as.call.name, token->data.str_val);
 
     ParseResult result_next_token = next_token(parser);
     if (result_next_token != PARSE_OK) {
@@ -626,13 +633,12 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
             }
 
             part->type = TYPE_STRING;
-            part->as.literal.value.string_val = malloc(strlen(token->data.str_val) + 1);
+            part->as.literal.value.string_val = copy_string(token->data.str_val);
             if (part->as.literal.value.string_val == NULL) {
                 ast_free(node);
                 ast_free(part);
                 return 99;
             }
-            strcpy(part->as.literal.value.string_val, token->data.str_val);
         }
         // create an identifier node for the var referenced by $name.
         else if (token->type == TOK_ID) {
@@ -643,13 +649,12 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
             }
 
             part->type = TYPE_UNKNOWN;
-            part->as.identifier.name = malloc(strlen(token->data.str_val) + 1);
+            part->as.identifier.name = copy_string(token->data.str_val);
             if (part->as.identifier.name == NULL) {
                 ast_free(node);
                 ast_free(part);
                 return 99;
             }
-            strcpy(part->as.identifier.name, token->data.str_val);
         }
         // skip TOK_INTERPOLATION_BEGIN and parse the expression inside curly brackets
         else if (token->type == TOK_INTERPOLATION_BEGIN) {
@@ -848,13 +853,12 @@ int parse_expression(Parser *parser, AstNode **result) {
             }
             
             node->type = TYPE_UNKNOWN;
-            node->as.call.name = malloc(strlen(token->data.str_val) + 1);
+            node->as.call.name = copy_string(token->data.str_val);
             if (node->as.call.name == NULL) {
                 ast_free(node);
                 stack_and_ast_free(&stack);
                 return 99;
             }
-            strcpy(node->as.call.name, token->data.str_val);
 
             if (ast_list_push(&node->as.call.args, stack.items[stack.length - 1].ast) != true) {
                 ast_free(node);
