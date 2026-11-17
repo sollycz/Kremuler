@@ -248,6 +248,68 @@ static ReductionType get_reduction_type(const PrecedenceStack *stack)
     }
 }
 
+static int create_node_operand(const Token *token, AstNode **result) {
+    *result = NULL;
+
+    AstKind kind = AST_LITERAL;
+    if (token->type == TOK_ID) {
+        kind = AST_IDENTIFIER;
+    }
+
+    AstNode *node = ast_new(kind, token->line);
+    if (node == NULL) {
+        return 99;
+    }
+
+    switch (token->type) {
+        case TOK_INT_LITERAL:
+            node->type = TYPE_INT;
+            node->as.literal.value.int_val = token->data.num_int_val; 
+            break;
+
+        case TOK_DOUBLE_LITERAL:
+            node->type = TYPE_DOUBLE;
+            node->as.literal.value.double_val = token->data.num_float_val;
+            break;
+
+        case TOK_TRUE:
+        case TOK_FALSE:
+            node->type = TYPE_BOOL;
+            if (token->type == TOK_TRUE) {
+                node->as.literal.value.int_val = 1; // PŘEDĚLAT NA BOOL VAL AŽ BUDE V AST
+            }
+            else {
+                node->as.literal.value.int_val = 0; // PŘEDĚLAT NA BOOL VAL AŽ BUDE V AST
+            }
+            break;
+
+        case TOK_STRING_LITERAL:
+            node->type = TYPE_STRING;
+            node->as.literal.value.string_val = copy_string(token->data.str_val);
+            if (node->as.literal.value.string_val == NULL) {
+                free(node);
+                return 99;
+            }
+            break;
+
+        case TOK_ID:
+            node->type = TYPE_UNKNOWN;
+            node->as.identifier.name = copy_string(token->data.str_val);
+            if (node->as.identifier.name == NULL) {
+                free(node);
+                return 99;
+            }
+            break;
+
+        default:
+            ast_free(node);
+            return 2;
+    }
+
+    *result = node;
+    return 0;
+}
+
 static int reduce_expression(PrecedenceStack *stack) {
     ReductionType reduction = get_reduction_type(stack);
                 
@@ -257,86 +319,16 @@ static int reduce_expression(PrecedenceStack *stack) {
             return 99;
         }
         
-        if (stack->items[boundary_index + 1].token.type == TOK_INT_LITERAL) {
-            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
-            if (node == NULL) {
-                return 99;
-            }
+        StackItem *operand = &stack->items[boundary_index + 1];
 
-            node->type = TYPE_INT;
-            node->as.literal.value.int_val = stack->items[boundary_index + 1].token.data.num_int_val;
-            stack->items[boundary_index + 1].ast = node;
+        int status = create_node_operand(&operand->token, &operand->ast);
+        if (status != 0) {
+            return status;
         }
-
-        if (stack->items[boundary_index + 1].token.type == TOK_DOUBLE_LITERAL) {
-            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
-            if (node == NULL) {
-                return 99;
-            }
-
-            node->type = TYPE_DOUBLE;
-            node->as.literal.value.double_val = stack->items[boundary_index + 1].token.data.num_float_val;
-            stack->items[boundary_index + 1].ast = node;
-        }
-
-        if (stack->items[boundary_index + 1].token.type == TOK_TRUE || stack->items[boundary_index + 1].token.type == TOK_FALSE) {
-            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
-            if (node == NULL) {
-                return 99;
-            }
-
-            node->type = TYPE_BOOL;
-            if (stack->items[boundary_index + 1].token.type == TOK_TRUE) { 
-                node->as.literal.value.int_val = 1; // TODO: PŘEDĚLAT NA .BOOL_VAL AŽ BUDE!
-            }
-            else {
-                node->as.literal.value.int_val = 0; // TODO: PŘEDĚLAT NA .BOOL_VAL AŽ BUDE!
-            }
-            stack->items[boundary_index + 1].ast = node;
-        }
-
-        if (stack->items[boundary_index + 1].token.type == TOK_STRING_LITERAL) {
-            AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
-            if (node == NULL) {
-                return 99;
-            }
-
-            node->type = TYPE_STRING;
-
-            size_t length = strlen(stack->items[boundary_index + 1].token.data.str_val) + 1;
-            node->as.literal.value.string_val = malloc(length);
-            if (node->as.literal.value.string_val == NULL) {
-                free(node);
-                return 99;
-            }
-
-            strcpy(node->as.literal.value.string_val, stack->items[boundary_index + 1].token.data.str_val);
-            stack->items[boundary_index + 1].ast = node;
-
-            free(stack->items[boundary_index + 1].token.data.str_val);
-            stack->items[boundary_index + 1].token.data.str_val = NULL;
-        }
-
-        if (stack->items[boundary_index + 1].token.type == TOK_ID) {
-            AstNode *node = ast_new(AST_IDENTIFIER, stack->items[boundary_index + 1].token.line);
-            if (node == NULL) {
-                return 99;
-            }
-
-            node->type = TYPE_UNKNOWN;
-
-            size_t length = strlen(stack->items[boundary_index + 1].token.data.str_val) + 1;
-            node->as.identifier.name = malloc(length);
-            if (node->as.identifier.name == NULL) {
-                free(node);
-                return 99;
-            }
-
-            strcpy(node->as.identifier.name, stack->items[boundary_index + 1].token.data.str_val);
-            stack->items[boundary_index + 1].ast = node;
-
-            free(stack->items[boundary_index + 1].token.data.str_val);
-            stack->items[boundary_index + 1].token.data.str_val = NULL;
+        
+        if (operand->token.type == TOK_ID || operand->token.type == TOK_STRING_LITERAL) {
+            free(operand->token.data.str_val);
+            operand->token.data.str_val = NULL;
         }
 
         stack->items[boundary_index + 1].type = STACK_EXPRESSION;
@@ -624,36 +616,12 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
     while (token->type != TOK_INTERPOLATED_END) {
         AstNode *part = NULL;
 
-        // copy the text into AST before next_token() frees the token.
-        if (token->type == TOK_STRING_LITERAL) {
-            part = ast_new(AST_LITERAL, token->line);
-            if (part == NULL) {
+        // create a string literal or identifier node with its own text copy.
+        if (token->type == TOK_STRING_LITERAL || token->type == TOK_ID) {
+            int status = create_node_operand(token, &part);
+            if (status != 0) {
                 ast_free(node);
-                return 99;
-            }
-
-            part->type = TYPE_STRING;
-            part->as.literal.value.string_val = copy_string(token->data.str_val);
-            if (part->as.literal.value.string_val == NULL) {
-                ast_free(node);
-                ast_free(part);
-                return 99;
-            }
-        }
-        // create an identifier node for the var referenced by $name.
-        else if (token->type == TOK_ID) {
-            part = ast_new(AST_IDENTIFIER, token->line);
-            if (part == NULL) {
-                ast_free(node);
-                return 99;
-            }
-
-            part->type = TYPE_UNKNOWN;
-            part->as.identifier.name = copy_string(token->data.str_val);
-            if (part->as.identifier.name == NULL) {
-                ast_free(node);
-                ast_free(part);
-                return 99;
+                return status;
             }
         }
         // skip TOK_INTERPOLATION_BEGIN and parse the expression inside curly brackets
