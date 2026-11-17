@@ -1,3 +1,10 @@
+/**
+ * @file precedence_parser.h
+ * @brief Header file for the precedence parser for IFJ26
+ * @author David Zoblivý (xzoblid00)
+ * @date 17.11.2026
+ */
+
 #ifndef PRECEDENCE_PARSER_H
 #define PRECEDENCE_PARSER_H
 #include "token.h"

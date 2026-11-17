@@ -1,3 +1,11 @@
+/**
+ * @file precedence_parser.c
+ * @brief Precedence parser for IFJ26 expressions
+ * @author David Zoblivý (xzoblid00)
+ * @date 17.11.2026
+ * @todo enable AND, OR, NOT after completing ast.h
+ */
+
 #include "precedence_parser.h"
 #include "precedence_stack.h"
 #include "token.h"

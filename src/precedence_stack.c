@@ -1,3 +1,10 @@
+/**
+ * @file precedence_stack.c
+ * @brief Dynamic stack implementation for the IFJ26 precedence parser.
+ * @author David Zoblivý (xzoblid00)
+ * @date 17.11.2026
+ */
+
 #include "precedence_stack.h"
 #include <stdlib.h>
 #include <stdbool.h>

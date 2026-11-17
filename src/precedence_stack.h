@@ -1,3 +1,10 @@
+/**
+ * @file precedence_stack.h
+ * @brief Header file for the dynamic stack of the IFJ26 precedence parser.
+ * @author David Zoblivý (xzoblid00)
+ * @date 17.11.2026
+ */
+
 #ifndef PRECEDENCE_STACK_H
 #define PRECEDENCE_STACK_H
 
