@@ -5,6 +5,7 @@
  */
 
 #include "parser.h"
+#include "precedence_parser.h"
 #include "scanner.h"
 #include <stdlib.h>
 #include <string.h>
@@ -274,11 +275,61 @@ static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
     return PARSE_OK;
 }
 
-// <function_body> -> <expression> TOK_EOL | TOK_EOL <block>
-static ParseResult parse_function_body(Parser *p, AstNode **out) {
+// <block> -> INDENT <statement> <statement_next> DEDENT
+static ParseResult parse_block(Parser *p, AstNode **out) {
     (void)p;
     (void)out;
     return PARSE_SYNTAX_ERROR;
+}
+
+// <function_body> -> <expression> TOK_EOL | TOK_EOL <block>
+static ParseResult parse_function_body(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    // TOK_EOL <block>
+    if (p->current.type == TOK_EOL) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        return parse_block(p, out);
+    }
+
+    // <expression> TOK_EOL
+    AstNode *block = ast_new(AST_BLOCK, p->current.line);
+    if (block == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    AstNode *ret = ast_new(AST_RETURN, p->current.line);
+    if (ret == NULL) {
+        ast_free(block);
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    bool successful_push;
+    successful_push = ast_list_push(&block->as.block.statements, ret);
+    if (successful_push == false) {
+        ast_free(block);
+        ast_free(ret);
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    result = parse_expression(p, &ret->as.return_statement.value);
+    if (result != PARSE_OK) {
+        ast_free(block);
+        return result;
+    }
+
+    result = expect(p, TOK_EOL);
+    if (result != PARSE_OK) {
+        ast_free(block);
+        return result;
+    }
+
+    *out = block;
+    return PARSE_OK;
 }
 
 // <function> -> TOK_KW_DEF TOK_ID TOK_LEFT_PARENTHESIS <parameters> TOK_RIGHT_PARENTHESIS <optional_type> TOK_ASSIGN
