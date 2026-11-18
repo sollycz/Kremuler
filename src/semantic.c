@@ -4,6 +4,7 @@
  * @author Filip Radulovič (xradulf00)
  * @todo Add comments
  * @todo Rework check_block "double" declaration
+ * @todo Same for check_expr and check_fn
  */
 
 #include "semantic.h"
@@ -12,6 +13,17 @@
 #include <stdlib.h>
 
 static stab *sem_st = NULL;
+
+static bool is_numeric(DataType t) {
+    return t == TYPE_INT || t == TYPE_DOUBLE;
+}
+
+static bool is_assignable(DataType target, DataType src) {
+    if (target == src || target == TYPE_ANY) {
+        return true;
+    }
+    return target == TYPE_DOUBLE && src == TYPE_INT;
+}
 
 // prints error message to stderr and returns sem. error code
 static sem_res_t error(sem_res_t code, unsigned int line, const char *msg) {
@@ -172,6 +184,128 @@ static sem_res_t declare_params(AstNode *fn) {
     return SEM_OK;
 }
 
+// again ugly, but works for now
+static sem_res_t check_expr(AstNode *node);
+
+static sem_res_t check_unary(AstNode *node) {
+    AstNode *operand = node->as.unary.operand;
+
+    sem_res_t res = check_expr(operand);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    if (!is_numeric(operand->type)) {
+        return error(SEM_TYPE, node->line, "unary operator requires a number");
+    }
+
+    node->type = operand->type;
+    return SEM_OK;
+}
+
+static sem_res_t check_binary(AstNode *node) {
+    AstNode *left = node->as.binary.left;
+    AstNode *right = node->as.binary.right;
+
+    // left to right
+    sem_res_t res = check_expr(left);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    res = check_expr(right);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    DataType l = left->type;
+    DataType r = right->type;
+
+    bool numbers = is_numeric(l) && is_numeric(r);
+    bool strings = l == TYPE_STRING && r == TYPE_STRING;
+
+    switch (node->as.binary.operator_type) {
+    case OP_ADD:
+        if (strings) {
+            node->type = TYPE_STRING;
+            return SEM_OK;
+        }
+        // intentional fall through
+    case OP_SUB:
+    case OP_MUL:
+    case OP_DIV:
+        if (!numbers) {
+            return error(SEM_TYPE, node->line, "arithmetic operator requires numbers");
+        }
+
+        if (l == TYPE_INT && r == TYPE_INT) {
+            node->type = TYPE_INT;
+        } else {
+            node->type = TYPE_DOUBLE;
+        }
+
+        return SEM_OK;
+
+    case OP_LT:
+    case OP_LE:
+    case OP_GT:
+    case OP_GE:
+        if (!numbers && !strings) {
+            return error(SEM_TYPE, node->line, "relational operator requires two numbers or two strings");
+        }
+
+        node->type = TYPE_BOOL;
+
+        return SEM_OK;
+
+    case OP_EQ:
+    case OP_NE:
+        if (!numbers && l != r) {
+            return error(SEM_TYPE, node->line, "equality operator requires same types or two numbers");
+        }
+
+        node->type = TYPE_BOOL;
+
+        return SEM_OK;
+
+    default:
+        // rest is boolthen, not supported for now
+        return error(SEM_INTERNAL, node->line, "unsupported operator");
+    }
+}
+
+static sem_res_t check_call(AstNode *node) {
+    stab_func *f = stab_find_func(sem_st, node->as.call.name, NULL);
+    if (!f) {
+        return error(SEM_UNDEFINED, node->line, "undefined function");
+    }
+
+    const stab_param_list *params = &f->param_lists[0];
+    const AstNodeList *args = &node->as.call.args;
+
+    if (args->count != params->count) {
+        return error(SEM_BAD_CALL, node->line, "wrong number of arguments");
+    }
+
+    size_t arg_len = args->count;
+
+    // left to right
+    for (size_t i = 0; i < arg_len; i++) {
+        sem_res_t res = check_expr(args->items[i]);
+        if (res != SEM_OK) {
+            return res;
+        }
+
+        if (!is_assignable(params->params[i].type, args->items[i]->type)) {
+            return error(SEM_BAD_CALL, node->line, "wrong type of argument");
+        }
+    }
+
+    node->type = f->ret_type;
+
+    return SEM_OK;
+}
+
 static sem_res_t check_expr(AstNode *node) {
     switch (node->node_kind) {
     case AST_LITERAL:
@@ -190,9 +324,17 @@ static sem_res_t check_expr(AstNode *node) {
         return SEM_OK;
     }
 
-    // silences warnings before implementation
+    case AST_UNARY_OPERATOR:
+        return check_unary(node);
+
+    case AST_BINARY_OPERATOR:
+        return check_binary(node);
+
+    case AST_CALL:
+        return check_call(node);
+
     default:
-        return SEM_OK;
+        return error(SEM_INTERNAL, node->line, "unexpected node in expression");
     }
 }
 
