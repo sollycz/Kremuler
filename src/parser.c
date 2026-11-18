@@ -334,9 +334,42 @@ static ParseResult parse_variable(Parser *p, AstNode **out) {
 
 // <assign> -> TOK_ID TOK_ASSIGN <expression>
 static ParseResult parse_assign(Parser *p, AstNode **out) {
-    (void)p;
-    (void)out;
-    return PARSE_SYNTAX_ERROR;
+    ParseResult result;
+
+    AstNode *node = ast_new(AST_ASSIGN, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    // TOK_ID
+    if (p->current.type != TOK_ID) {
+        ast_free(node);
+        return PARSE_SYNTAX_ERROR;
+    }
+    node->as.assign.name = p->current.data.str_val;
+    p->current.data.str_val = NULL;
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_ASSIGN
+    result = expect(p, TOK_ASSIGN);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <expression>
+    result = parse_expression(p, &node->as.assign.value);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
 }
 
 // <return> -> TOK_KW_RETURN <optional_expression>
