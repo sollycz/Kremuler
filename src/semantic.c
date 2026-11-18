@@ -77,7 +77,7 @@ static sem_res_t check_main_sig(const AstNode *fn) {
     return SEM_OK;
 }
 
-static sem_res_t declare_fn(const AstNode *fn) {
+static sem_res_t declare_fn(AstNode *fn) {
     assert(fn->node_kind == AST_FUNCTION);
 
     // malloc in build_param_list
@@ -108,6 +108,9 @@ static sem_res_t declare_fn(const AstNode *fn) {
         return stab_res_convert(res2);
     }
 
+    // second pass needs ast_node reference
+    f->ast_node = fn;
+
     if (fn->as.function.is_main_func) {
         // reusing res is safe here
         res = check_main_sig(fn);
@@ -123,6 +126,7 @@ static sem_res_t declare_fn(const AstNode *fn) {
     return SEM_OK;
 }
 
+// first pass, collect all functions and variables
 static sem_res_t collect_fns(const AstNode *program) {
     assert(program->node_kind == AST_PROGRAM);
 
@@ -144,6 +148,63 @@ static sem_res_t collect_fns(const AstNode *program) {
     return SEM_OK;
 }
 
+static sem_res_t declare_params(AstNode *fn) {
+    const AstNodeList *params = &fn->as.function.parameters;
+    size_t params_len = params->count;
+
+    for (size_t i = 0; i < params_len; i++) {
+        AstNode *param = params->items[i];
+
+        stab_res_t res;
+        stab_var *v = stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res);
+        if (!v) {
+            if (res == ST_REDEFINED) {
+                return error(SEM_REDEFINED, param->line, "duplicate parameter name");
+            }
+            return stab_res_convert(res);
+        }
+
+        // for codegen
+        param->var_id = v->id;
+    }
+
+    return SEM_OK;
+}
+
+static sem_res_t check_fn(stab_func *fn) {
+    AstNode *ast = fn->ast_node;
+
+    sem_res_t res = stab_res_convert(stab_enter_func(sem_st, fn));
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    res = declare_params(ast);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    stab_leave_func(sem_st);
+    return SEM_OK;
+}
+
+// second pass, checks bodies of all functions
+static sem_res_t check_fns(const AstNode *program) {
+    const AstNodeList *functions = &program->as.program.functions;
+    size_t fn_len = functions->count;
+
+    for (size_t i = 0; i < fn_len; i++) {
+        stab_func *fn = stab_find_func(sem_st, functions->items[i]->as.function.name, NULL);
+
+        sem_res_t res = check_fn(fn);
+        if (res != SEM_OK) {
+            return res;
+        }
+    }
+
+    return SEM_OK;
+}
+
 void semantic_init(stab *st) {
     assert(st != NULL);
     sem_st = st;
@@ -157,6 +218,5 @@ sem_res_t semantic_analyse(AstNode *program) {
         return res;
     }
 
-    // @todo second pass
-    return SEM_OK;
+    return check_fns(program);
 }
