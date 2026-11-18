@@ -271,6 +271,13 @@ static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
     return PARSE_OK;
 }
 
+// <function_body> -> <expression> TOK_EOL | TOK_EOL <block>
+static ParseResult parse_function_body(Parser *p, AstNode **out) {
+    (void)p;
+    (void)out;
+    return PARSE_SYNTAX_ERROR;
+}
+
 // <function> -> TOK_KW_DEF TOK_ID TOK_LEFT_PARENTHESIS <parameters> TOK_RIGHT_PARENTHESIS <optional_type> TOK_ASSIGN
 // <function_body>
 static ParseResult parse_function(Parser *p, AstNode **out) {
@@ -281,6 +288,70 @@ static ParseResult parse_function(Parser *p, AstNode **out) {
     if (result != PARSE_OK) {
         return result;
     }
+
+    // TOK_ID
+    if (p->current.type != TOK_ID) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    AstNode *node = ast_new(AST_FUNCTION, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    node->as.function.name = p->current.data.str_val;
+    p->current.data.str_val = NULL;
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_LEFT_PARENTHESIS
+    result = expect(p, TOK_LEFT_PARENTHESIS);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <parameters>
+    result = parse_parameters(p, &node->as.function.parameters);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_RIGHT_PARENTHESIS
+    result = expect(p, TOK_RIGHT_PARENTHESIS);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <optional_type>
+    result = parse_optional_type(p, &node->as.function.return_type);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_ASSIGN
+    result = expect(p, TOK_ASSIGN);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <function_body>
+    result = parse_function_body(p, &node->as.function.block);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
 }
 
 // <function_main> -> TOK_AT TOK_ID <optional_eol> <function>
