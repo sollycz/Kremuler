@@ -3,7 +3,6 @@
  * @brief Precedence parser for IFJ26 expressions
  * @author David Zoblivý (xzoblid00)
  * @date 17.11.2026
- * @todo enable AND, OR, NOT after completing ast.h
  */
 
 #include "precedence_parser.h"
@@ -328,10 +327,10 @@ static int create_node_operand(const Token *token, AstNode **result) {
         case TOK_FALSE:
             node->type = TYPE_BOOL;
             if (token->type == TOK_TRUE) {
-                node->as.literal.value.int_val = 1; // PŘEDĚLAT NA BOOL VAL AŽ BUDE V AST
+                node->as.literal.value.int_val = 1;
             }
             else {
-                node->as.literal.value.int_val = 0; // PŘEDĚLAT NA BOOL VAL AŽ BUDE V AST
+                node->as.literal.value.int_val = 0;
             }
             break;
 
@@ -446,8 +445,7 @@ static int reduce_expression(PrecedenceStack *stack) {
             stack->items[boundary_index].ast = node;
 
         }
-
-        /*      UNCOMMENT AFTER ADDING OP_NOT TO AST.H
+    
         if (stack->items[boundary_index + 1].token.type == TOK_NOT) {
             AstNode *node = ast_new(AST_UNARY_OPERATOR, stack->items[boundary_index + 1].token.line);
             if (node == NULL) {
@@ -459,12 +457,7 @@ static int reduce_expression(PrecedenceStack *stack) {
                 node->as.unary.operand = stack->items[boundary_index + 2].ast;
                 stack->items[boundary_index] = stack->items[boundary_index + 2];
                 stack->items[boundary_index].ast = node;
-
-            } */
-
-        if (stack->items[boundary_index + 1].token.type == TOK_NOT) {
-            return 2;
-        }
+            } 
 
         stack->length -= 2;
         return 0;
@@ -514,14 +507,12 @@ static int reduce_expression(PrecedenceStack *stack) {
         else if (stack->items[boundary_index + 2].token.type == TOK_NOT_EQUAL) {
             node->as.binary.operator_type = OP_NE;
         }
-    /*   UNCOMMENT AFTER ADDING && AND || INTO AST.H
         else if (stack->items[boundary_index + 2].token.type == TOK_AND) {
             node->as.binary.operator_type = OP_AND;
         }
         else if (stack->items[boundary_index + 2].token.type == TOK_OR) {
             node->as.binary.operator_type = OP_OR;
         }
-    */
         
         else {
             free(node);
