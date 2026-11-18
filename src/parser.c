@@ -155,6 +155,9 @@ static ParseResult expect(Parser *p, TokenType type) {
     return next_token(p);
 }
 
+// declaration
+static ParseResult parse_block(Parser *p, AstNode **out);
+
 // <type> -> TOK_KW_INT | TOK_KW_STRING | TOK_KW_UNIT | TOK_KW_DOUBLE
 // @todo | TOK_KW_BOOLEAN
 static ParseResult parse_type(Parser *p, DataType *type) {
@@ -419,9 +422,50 @@ static ParseResult parse_expression_statement(Parser *p, AstNode **out) {
 
 // <while> -> TOK_KW_WHILE <expression> TOK_KW_DO TOK_EOL <block>
 static ParseResult parse_while(Parser *p, AstNode **out) {
-    (void)p;
-    (void)out;
-    return PARSE_SYNTAX_ERROR;
+    ParseResult result;
+
+    AstNode *node = ast_new(AST_WHILE, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    // TOK_KW_WHILE
+    result = expect(p, TOK_KW_WHILE);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <expression>
+    result = parse_expression(p, &node->as.while_statement.condition);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_KW_DO
+    result = expect(p, TOK_KW_DO);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_EOL
+    result = expect(p, TOK_EOL);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <block>
+    result = parse_block(p, &node->as.while_statement.block);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
 }
 
 // <if> -> TOK_KW_IF <expression> TOK_KW_THEN TOK_EOL <block> TOK_KW_ELSE TOK_EOL <block>
