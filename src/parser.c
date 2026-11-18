@@ -276,10 +276,60 @@ static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
 }
 
 // <variable> -> <variable_type> TOK_ID <optional_type> TOK_ASSIGN <expression>
+// <variable_type> -> TOK_KW_VAR | TOK_KW_VAL
 static ParseResult parse_variable(Parser *p, AstNode **out) {
-    (void)p;
-    (void)out;
-    return PARSE_SYNTAX_ERROR;
+    ParseResult result;
+
+    AstNode *node = ast_new(AST_VARIABLE_DEFINITION, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    // val or var?
+    bool is_mutable = (p->current.type == TOK_KW_VAR);
+    node->as.variable_definition.is_mutable = is_mutable;
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_ID
+    if (p->current.type != TOK_ID) {
+        ast_free(node);
+        return PARSE_SYNTAX_ERROR;
+    }
+    node->as.variable_definition.name = p->current.data.str_val;
+    p->current.data.str_val = NULL;
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <optional_type>
+    result = parse_optional_type(p, &node->as.variable_definition.declared_type);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_ASSIGN
+    result = expect(p, TOK_ASSIGN);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <expression>
+    result = parse_expression(p, &node->as.variable_definition.value);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
 }
 
 // <assign> -> TOK_ID TOK_ASSIGN <expression>
