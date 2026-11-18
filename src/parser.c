@@ -191,6 +191,86 @@ static ParseResult parse_optional_type(Parser *p, DataType *type) {
     }
 }
 
+// <parameter> -> TOK_ID TOK_COLON <type>
+static ParseResult parse_parameter(Parser *p, AstNode **out) {
+    // TOK_ID
+    if (p->current.type != TOK_ID) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    AstNode *node = ast_new(AST_PARAMETER, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    node->as.parameter.name = p->current.data.str_val;
+    p->current.data.str_val = NULL;
+
+    ParseResult result;
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_COLON
+    result = expect(p, TOK_COLON);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <type>
+    result = parse_type(p, &node->as.parameter.type);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    (*out) = node;
+    return PARSE_OK;
+}
+
+// <parameters> -> <parameter> <parameter_next> | epsilon
+// <parameter_next> -> TOK_COMMA <parameter> <parameter_next> | epsilon
+static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
+    // epsilon
+    if (p->current.type != TOK_ID) {
+        return PARSE_OK;
+    }
+
+    // parameter(s)
+    while (true) {
+        AstNode *parameter = NULL;
+        ParseResult result;
+
+        result = parse_parameter(p, &parameter);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        bool successful_push;
+        successful_push = ast_list_push(parameters, parameter);
+
+        if (successful_push == false) {
+            ast_free(parameter);
+            return PARSE_INTERNAL_ERROR;
+        }
+
+        // TOK_COMMA
+        if (p->current.type != TOK_COMMA) {
+            break;
+        }
+
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+    }
+
+    return PARSE_OK;
+}
+
 // <function> -> TOK_KW_DEF TOK_ID TOK_LEFT_PARENTHESIS <parameters> TOK_RIGHT_PARENTHESIS <optional_type> TOK_ASSIGN
 // <function_body>
 static ParseResult parse_function(Parser *p, AstNode **out) {
