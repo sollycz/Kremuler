@@ -291,16 +291,47 @@ static ParseResult parse_assign(Parser *p, AstNode **out) {
 
 // <return> -> TOK_KW_RETURN <optional_expression>
 static ParseResult parse_return(Parser *p, AstNode **out) {
-    (void)p;
-    (void)out;
-    return PARSE_SYNTAX_ERROR;
+    ParseResult result;
+    result = expect(p, TOK_KW_RETURN);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    AstNode *node = ast_new(AST_RETURN, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
+        node->as.return_statement.value = NULL;
+    } else {
+        result = parse_expression(p, &node->as.return_statement.value);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+    }
+
+    *out = node;
+    return PARSE_OK;
 }
 
 // <expression> => [PRECEDENCE PARSER]
 static ParseResult parse_expression_statement(Parser *p, AstNode **out) {
-    (void)p;
-    (void)out;
-    return PARSE_SYNTAX_ERROR;
+    ParseResult result;
+    AstNode *node = ast_new(AST_EXPRESSION_STATEMENT, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    result = parse_expression(p, &node->as.expression_statement.expression);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
 }
 
 // <while> -> TOK_KW_WHILE <expression> TOK_KW_DO TOK_EOL <block>
