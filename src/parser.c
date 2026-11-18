@@ -157,6 +157,7 @@ static ParseResult expect(Parser *p, TokenType type) {
 
 // declaration
 static ParseResult parse_block(Parser *p, AstNode **out);
+static ParseResult parse_if(Parser *p, AstNode **out);
 
 // <type> -> TOK_KW_INT | TOK_KW_STRING | TOK_KW_UNIT | TOK_KW_DOUBLE | TOK_KW_BOOLEAN
 static ParseResult parse_type(Parser *p, DataType *type) {
@@ -470,7 +471,64 @@ static ParseResult parse_while(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <if> -> TOK_KW_IF <expression> TOK_KW_THEN TOK_EOL <block> TOK_KW_ELSE TOK_EOL <block>
+// <else_next> -> TOK_EOL <block> | <if>
+static ParseResult parse_else_next(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    if (p->current.type == TOK_EOL) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        return parse_block(p, out);
+    }
+
+    if (p->current.type != TOK_KW_IF) {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    AstNode *block = ast_new(AST_BLOCK, p->current.line);
+    if (block == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    AstNode *nested = NULL;
+    result = parse_if(p, &nested);
+    if (result != PARSE_OK) {
+        ast_free(block);
+        return result;
+    }
+
+    bool successful_push;
+    successful_push = ast_list_push(&block->as.block.statements, nested);
+    if (successful_push == false) {
+        ast_free(nested);
+        ast_free(block);
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    *out = block;
+    return PARSE_OK;
+}
+
+// <else> -> TOK_KW_ELSE <else_next> | epsilon
+static ParseResult parse_else(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    if (p->current.type == TOK_KW_ELSE) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        return parse_else_next(p, out);
+    }
+
+    return PARSE_OK;
+}
+
+// <if> -> TOK_KW_IF <expression> TOK_KW_THEN TOK_EOL <block> <else>
 static ParseResult parse_if(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -514,22 +572,8 @@ static ParseResult parse_if(Parser *p, AstNode **out) {
         return result;
     }
 
-    // TOK_KW_ELSE
-    result = expect(p, TOK_KW_ELSE);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
-
-    // TOK_EOL
-    result = expect(p, TOK_EOL);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
-
-    // <block>
-    result = parse_block(p, &node->as.if_statement.else_block);
+    // <else>
+    result = parse_else(p, &node->as.if_statement.else_block);
     if (result != PARSE_OK) {
         ast_free(node);
         return result;
