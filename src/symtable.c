@@ -30,7 +30,7 @@ struct stab {
 typedef struct {
     const char *name;
     bool is_method;
-    stab_type_t receiver_type;
+    DataType receiver_type;
 } stab_func_key;
 
 // djb2 hash function used for variables and function names
@@ -174,7 +174,7 @@ stab_func *stab_add_func(stab *st,
                          const char *name,
                          const stab_param_list *param_lists,
                          stab_size_t list_count,
-                         stab_type_t ret_type,
+                         DataType ret_type,
                          bool ret_explicit,
                          const stab_param *receiver,
                          stab_res_t *res) {
@@ -472,7 +472,7 @@ stab_func *stab_current_func(const stab *st) {
 }
 
 // allocates variable and adds it to function.locals
-static stab_var *add_local(stab_func *f, const char *name, stab_type_t type, bool is_mutable) {
+static stab_var *add_local(stab_func *f, const char *name, DataType type, bool is_mutable) {
     stab_var *v = malloc(sizeof *v);
     if (!v) {
         return NULL;
@@ -501,7 +501,7 @@ static stab_var *add_local(stab_func *f, const char *name, stab_type_t type, boo
     return v;
 }
 
-stab_var *stab_declare_var(stab *st, const char *name, stab_type_t type, bool is_mutable, stab_res_t *res) {
+stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res) {
     assert(st != NULL && st->top != NULL && st->top->func != NULL);
 
     stab_func *f = st->top->func;
@@ -531,7 +531,7 @@ stab_var *stab_declare_var(stab *st, const char *name, stab_type_t type, bool is
     return NULL;
 }
 
-stab_var *stab_create_temp_var(stab *st, stab_type_t type) {
+stab_var *stab_create_temp_var(stab *st, DataType type) {
     assert(st != NULL && st->top != NULL && st->top->func != NULL);
     return add_local(st->top->func, NULL, type, true);
 }
@@ -547,7 +547,7 @@ stab_var *stab_find_var(const stab *st, const char *name) {
     return NULL;
 }
 
-stab_func *stab_find_func(const stab *st, const char *name, const stab_type_t *receiver) {
+stab_func *stab_find_func(const stab *st, const char *name, const DataType *receiver) {
     assert(st != NULL && name != NULL);
 
     stab_func_key key = {
