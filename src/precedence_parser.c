@@ -894,7 +894,7 @@ int parse_expression(Parser *parser, AstNode **result) {
             continue;
         }
 
-        if (token->type == TOK_EOL || token->type == TOK_EOF) {
+        if (token->type == TOK_EOL || token->type == TOK_EOF || token->type == TOK_SEMICOLON) {
             input_symbol = SYMBOL_END;
         }
         else if (token->type == TOK_RIGHT_PARENTHESIS && parentheses_depth == 0) {
