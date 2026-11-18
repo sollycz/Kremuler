@@ -275,11 +275,105 @@ static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
     return PARSE_OK;
 }
 
-// <statement> -> <statement_simple> <statement_end> | <statement_with_block>
-static ParseResult parse_statement(Parser *p, AstNode **out) {
+// <variable> -> <variable_type> TOK_ID <optional_type> TOK_ASSIGN <expression>
+static ParseResult parse_variable(Parser *p, AstNode **out) {
     (void)p;
     (void)out;
     return PARSE_SYNTAX_ERROR;
+}
+
+// <assign> -> TOK_ID TOK_ASSIGN <expression>
+static ParseResult parse_assign(Parser *p, AstNode **out) {
+    (void)p;
+    (void)out;
+    return PARSE_SYNTAX_ERROR;
+}
+
+// <return> -> TOK_KW_RETURN <optional_expression>
+static ParseResult parse_return(Parser *p, AstNode **out) {
+    (void)p;
+    (void)out;
+    return PARSE_SYNTAX_ERROR;
+}
+
+// <expression> => [PRECEDENCE PARSER]
+static ParseResult parse_expression_statement(Parser *p, AstNode **out) {
+    (void)p;
+    (void)out;
+    return PARSE_SYNTAX_ERROR;
+}
+
+// <while> -> TOK_KW_WHILE <expression> TOK_KW_DO TOK_EOL <block>
+static ParseResult parse_while(Parser *p, AstNode **out) {
+    (void)p;
+    (void)out;
+    return PARSE_SYNTAX_ERROR;
+}
+
+// <if> -> TOK_KW_IF <expression> TOK_KW_THEN TOK_EOL <block> TOK_KW_ELSE TOK_EOL <block>
+static ParseResult parse_if(Parser *p, AstNode **out) {
+    (void)p;
+    (void)out;
+    return PARSE_SYNTAX_ERROR;
+}
+
+// <statement_simple> -> <variable> | <assign> | <return> | <expression>
+static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    switch (p->current.type) {
+    case TOK_KW_VAR:
+        return parse_variable(p, out);
+    case TOK_KW_VAL:
+        return parse_variable(p, out);
+    case TOK_KW_RETURN:
+        return parse_return(p, out);
+    case TOK_ID: {
+        TokenType next;
+        result = lookahead_token(p, &next);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        if (next == TOK_ASSIGN) {
+            return parse_assign(p, out);
+        }
+    } // fall through to an expression statement if its not an assignment
+    default:
+        return parse_expression_statement(p, out);
+    }
+}
+
+// <statement> -> <statement_simple> <statement_end> | <statement_with_block>
+static ParseResult parse_statement(Parser *p, AstNode **out) {
+    switch (p->current.type) {
+    case TOK_KW_WHILE:
+        return parse_while(p, out);
+    case TOK_KW_IF:
+        return parse_if(p, out);
+    default:
+        break;
+    }
+
+    ParseResult result;
+    result = parse_statement_simple(p, out);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // <statement_end> -> TOK_EOL | TOK_SEMICOLON
+    if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            ast_free(*out);
+            return result;
+        }
+    } else {
+        ast_free(*out);
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    return PARSE_OK;
 }
 
 // <block> -> INDENT <statement> <statement_next> DEDENT
