@@ -20,7 +20,7 @@ typedef enum {
     SEM_IMMUTABLE = 7,
     SEM_OTHER = 10,
     SEM_INTERNAL = 99,
-} sem_res;
+} sem_res_t;
 
 // initializes the analyser with a symtable created by stab_new()
 // stab should be held by main.c for easier passing to code gen later
@@ -28,7 +28,7 @@ typedef enum {
 void semantic_init(stab *st);
 
 // runs semantic analysis of the provided program ast
-// return sem_res return code
-sem_res semantic_analyse(AstNode *program);
+// return sem_res_t return code
+sem_res_t semantic_analyse(AstNode *program);
 
 #endif // SEMANTIC_H
