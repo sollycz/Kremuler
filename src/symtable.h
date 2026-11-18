@@ -2,6 +2,7 @@
  * @file symtable.h
  * @brief Header file for Symtable ADT
  * @author Filip Radulovič (xradulf00)
+ * @todo Update nescesseary function definitions to work with new ast_node parameter in stab_func
  */
 
 #ifndef SYMTABLE_H
@@ -80,6 +81,7 @@ struct stab_func {
     stab_infer_t infer;
     bool is_method;
     stab_param receiver; // EXTKW extension (only for is_method = true)
+    void *ast_node;      // AST node of the definition
 };
 
 // creates new symbol table, otherwise returns null
