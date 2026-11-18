@@ -3,6 +3,7 @@
  * @brief Implementation of Semantic analysis
  * @author Filip Radulovič (xradulf00)
  * @todo Add comments
+ * @todo Rework check_block "double" declaration
  */
 
 #include "semantic.h"
@@ -171,6 +172,143 @@ static sem_res_t declare_params(AstNode *fn) {
     return SEM_OK;
 }
 
+static sem_res_t check_expr(AstNode *node) {
+    switch (node->node_kind) {
+    case AST_LITERAL:
+        // no need to check
+        return SEM_OK;
+
+    case AST_IDENTIFIER: {
+        stab_var *v = stab_find_var(sem_st, node->as.identifier.name);
+        if (!v) {
+            return error(SEM_UNDEFINED, node->line, "undefined variable");
+        }
+
+        node->type = v->type;
+        node->var_id = v->id;
+
+        return SEM_OK;
+    }
+
+    // silences warnings before implementation
+    default:
+        return SEM_OK;
+    }
+}
+
+static sem_res_t check_var_def(AstNode *node) {
+    AstNode *value = node->as.variable_definition.value;
+
+    sem_res_t res = check_expr(value);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    DataType type = node->as.variable_definition.declared_type;
+    if (type == TYPE_UNKNOWN) {
+        type = value->type;
+    }
+
+    stab_res_t st_res;
+    stab_var *v = stab_declare_var(sem_st,
+                                   node->as.variable_definition.name,
+                                   type,
+                                   node->as.variable_definition.is_mutable,
+                                   &st_res);
+    if (!v) {
+        if (st_res == ST_REDEFINED) {
+            return error(SEM_REDEFINED, node->line, "redefinition of variable");
+        }
+        return stab_res_convert(st_res);
+    }
+
+    node->var_id = v->id;
+
+    return SEM_OK;
+}
+
+static sem_res_t check_assign(AstNode *node) {
+    stab_var *v = stab_find_var(sem_st, node->as.assign.name);
+    if (!v) {
+        return error(SEM_UNDEFINED, node->line, "assignment to undefined variable");
+    }
+
+    node->var_id = v->id;
+
+    return check_expr(node->as.assign.value);
+}
+
+// todo: not a great solution, rework
+static sem_res_t check_block(AstNode *block);
+
+static sem_res_t check_statement(AstNode *node) {
+    sem_res_t res;
+
+    switch (node->node_kind) {
+    case AST_VARIABLE_DEFINITION:
+        return check_var_def(node);
+
+    case AST_ASSIGN:
+        return check_assign(node);
+
+    case AST_RETURN:
+        if (node->as.return_statement.value) {
+            return check_expr(node->as.return_statement.value);
+        }
+        return SEM_OK;
+
+    case AST_EXPRESSION_STATEMENT:
+        return check_expr(node->as.expression_statement.expression);
+
+    case AST_IF:
+        res = check_expr(node->as.if_statement.condition);
+        if (res != SEM_OK) {
+            return res;
+        }
+        res = check_block(node->as.if_statement.then_block);
+        if (res != SEM_OK) {
+            return res;
+        }
+        // else if is stored as else block with nested if
+        if (node->as.if_statement.else_block) {
+            return check_block(node->as.if_statement.else_block);
+        }
+        return SEM_OK;
+
+    case AST_WHILE:
+        res = check_expr(node->as.while_statement.condition);
+        if (res != SEM_OK) {
+            return res;
+        }
+        return check_block(node->as.while_statement.block);
+
+    default:
+        return error(SEM_INTERNAL, node->line, "unexpected node in block");
+    }
+}
+
+static sem_res_t check_block(AstNode *block) {
+    assert(block->node_kind == AST_BLOCK);
+
+    sem_res_t res = stab_res_convert(stab_enter_scope(sem_st));
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    const AstNodeList *statements = &block->as.block.statements;
+    size_t st_len = statements->count;
+
+    for (size_t i = 0; i < st_len; i++) {
+        res = check_statement(statements->items[i]);
+        if (res != SEM_OK) {
+            return res;
+        }
+    }
+
+    stab_leave_scope(sem_st);
+    return SEM_OK;
+}
+
 static sem_res_t check_fn(stab_func *fn) {
     AstNode *ast = fn->ast_node;
 
@@ -180,6 +318,11 @@ static sem_res_t check_fn(stab_func *fn) {
     }
 
     res = declare_params(ast);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    res = check_block(ast->as.function.block);
     if (res != SEM_OK) {
         return res;
     }
