@@ -37,6 +37,7 @@ typedef enum AstKind {
 typedef enum AstOperatorType {
     OP_NEG, // unary -x
     OP_POS, // unary +x
+    OP_NOT, // unary !x
     /** (binary) arithmetic operators */
     OP_ADD,
     OP_SUB,
@@ -49,6 +50,9 @@ typedef enum AstOperatorType {
     OP_GE, // >=
     OP_EQ, // ==
     OP_NE, // !=
+    /** (binary) logical operators */
+    OP_AND, // &&
+    OP_OR,  // ||
 } AstOperatorType;
 
 typedef struct AstNode AstNode;
