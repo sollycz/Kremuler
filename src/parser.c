@@ -158,8 +158,7 @@ static ParseResult expect(Parser *p, TokenType type) {
 // declaration
 static ParseResult parse_block(Parser *p, AstNode **out);
 
-// <type> -> TOK_KW_INT | TOK_KW_STRING | TOK_KW_UNIT | TOK_KW_DOUBLE
-// @todo | TOK_KW_BOOLEAN
+// <type> -> TOK_KW_INT | TOK_KW_STRING | TOK_KW_UNIT | TOK_KW_DOUBLE | TOK_KW_BOOLEAN
 static ParseResult parse_type(Parser *p, DataType *type) {
     switch (p->current.type) {
     case TOK_KW_INT:
@@ -173,6 +172,9 @@ static ParseResult parse_type(Parser *p, DataType *type) {
         break;
     case TOK_KW_DOUBLE:
         *type = TYPE_DOUBLE;
+        break;
+    case TOK_KW_BOOLEAN:
+        *type = TYPE_BOOL;
         break;
     default:
         return PARSE_SYNTAX_ERROR;
