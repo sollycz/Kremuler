@@ -14,6 +14,7 @@ typedef enum datatype {
     TYPE_STRING,
     TYPE_UNIT,
     TYPE_BOOL,
+    TYPE_ANY, // for semantic analysis
 } DataType;
 
 #endif
