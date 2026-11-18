@@ -185,6 +185,7 @@ static sem_res_t declare_params(AstNode *fn) {
 }
 
 // again ugly, but works for now
+static sem_res_t check_fn(stab_func *fn);
 static sem_res_t check_expr(AstNode *node);
 
 static sem_res_t check_unary(AstNode *node) {
@@ -301,6 +302,18 @@ static sem_res_t check_call(AstNode *node) {
         }
     }
 
+    // recursion has to have explicit return type
+    if (f->infer == INFER_RUNNING) {
+        return error(SEM_TYPE, node->line, "recursive function must have explicit return type");
+    }
+
+    if (f->infer == INFER_NONE) {
+        sem_res_t res = check_fn(f);
+        if (res != SEM_OK) {
+            return res;
+        }
+    }
+
     node->type = f->ret_type;
 
     return SEM_OK;
@@ -386,6 +399,9 @@ static sem_res_t check_block(AstNode *block);
 static sem_res_t check_statement(AstNode *node) {
     sem_res_t res;
 
+    // without explicit return use TYPE_UNIT
+    node->type = TYPE_UNIT;
+
     switch (node->node_kind) {
     case AST_VARIABLE_DEFINITION:
         return check_var_def(node);
@@ -395,12 +411,25 @@ static sem_res_t check_statement(AstNode *node) {
 
     case AST_RETURN:
         if (node->as.return_statement.value) {
-            return check_expr(node->as.return_statement.value);
+            res = check_expr(node->as.return_statement.value);
+            if (res != SEM_OK) {
+                return res;
+            }
+
+            node->type = node->as.return_statement.value->type;
         }
+
         return SEM_OK;
 
     case AST_EXPRESSION_STATEMENT:
-        return check_expr(node->as.expression_statement.expression);
+        res = check_expr(node->as.expression_statement.expression);
+        if (res != SEM_OK) {
+            return res;
+        }
+
+        node->type = node->as.expression_statement.expression->type;
+
+        return SEM_OK;
 
     case AST_IF:
         res = check_expr(node->as.if_statement.condition);
@@ -454,6 +483,10 @@ static sem_res_t check_block(AstNode *block) {
 static sem_res_t check_fn(stab_func *fn) {
     AstNode *ast = fn->ast_node;
 
+    if (!fn->ret_explicit) {
+        fn->infer = INFER_RUNNING;
+    }
+
     sem_res_t res = stab_res_convert(stab_enter_func(sem_st, fn));
     if (res != SEM_OK) {
         return res;
@@ -464,9 +497,16 @@ static sem_res_t check_fn(stab_func *fn) {
         return res;
     }
 
-    res = check_block(ast->as.function.block);
+    AstNode *body = ast->as.function.block;
+    res = check_block(body);
     if (res != SEM_OK) {
         return res;
+    }
+
+    if (!fn->ret_explicit) {
+        const AstNodeList *stmts = &body->as.block.statements;
+        fn->ret_type = stmts->items[stmts->count - 1]->type;
+        fn->infer = INFER_DONE;
     }
 
     stab_leave_func(sem_st);
@@ -480,6 +520,10 @@ static sem_res_t check_fns(const AstNode *program) {
 
     for (size_t i = 0; i < fn_len; i++) {
         stab_func *fn = stab_find_func(sem_st, functions->items[i]->as.function.name, NULL);
+
+        if (!fn->ret_explicit && fn->infer != INFER_NONE) {
+            continue;
+        }
 
         sem_res_t res = check_fn(fn);
         if (res != SEM_OK) {
