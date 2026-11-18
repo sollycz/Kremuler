@@ -159,7 +159,7 @@ bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
 }
 
 // resizes slots for new_capacity and clears all deleted slots.
-// return true if succesful, otherwise false. (table is left unchanged)
+// return true if successful, otherwise false. (table is left unchanged)
 static bool resize(htab *ht, htab_size_t new_capacity) {
     assert(ht->capacity <= new_capacity);
 
