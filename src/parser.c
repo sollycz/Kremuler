@@ -275,11 +275,56 @@ static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
     return PARSE_OK;
 }
 
-// <block> -> INDENT <statement> <statement_next> DEDENT
-static ParseResult parse_block(Parser *p, AstNode **out) {
+// <statement> -> <statement_simple> <statement_end> | <statement_with_block>
+static ParseResult parse_statement(Parser *p, AstNode **out) {
     (void)p;
     (void)out;
     return PARSE_SYNTAX_ERROR;
+}
+
+// <block> -> INDENT <statement> <statement_next> DEDENT
+static ParseResult parse_block(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    // INDENT
+    result = expect(p, TOK_INDENT);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // statement(s)
+    AstNode *block = ast_new(AST_BLOCK, p->current.line);
+    if (block == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    do {
+        AstNode *statement = NULL;
+        result = parse_statement(p, &statement);
+        if (result != PARSE_OK) {
+            ast_free(block);
+            return result;
+        }
+
+        bool successful_push;
+        successful_push = ast_list_push(&block->as.block.statements, statement);
+        if (successful_push == false) {
+            ast_free(block);
+            ast_free(statement);
+            return PARSE_INTERNAL_ERROR;
+        }
+
+    } while (p->current.type != TOK_DEDENT);
+
+    // DEDENT
+    result = expect(p, TOK_DEDENT);
+    if (result != PARSE_OK) {
+        ast_free(block);
+        return result;
+    }
+
+    *out = block;
+    return PARSE_OK;
 }
 
 // <function_body> -> <expression> TOK_EOL | TOK_EOL <block>
