@@ -151,12 +151,56 @@ static ParseResult expect(Parser *p, TokenType type) {
     return next_token(p);
 }
 
+// <type> -> TOK_KW_INT | TOK_KW_STRING | TOK_KW_UNIT | TOK_KW_DOUBLE
+// @todo | TOK_KW_BOOLEAN
+static ParseResult parse_type(Parser *p, DataType *type) {
+    switch (p->current.type) {
+    case TOK_KW_INT:
+        *type = TYPE_INT;
+        break;
+    case TOK_KW_STRING:
+        *type = TYPE_STRING;
+        break;
+    case TOK_KW_UNIT:
+        *type = TYPE_UNIT;
+        break;
+    case TOK_KW_DOUBLE:
+        *type = TYPE_DOUBLE;
+        break;
+    default:
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    return next_token(p);
+}
+
+// <optional_type> -> TOK_COLON <type> | epsilon
+static ParseResult parse_optional_type(Parser *p, DataType *type) {
+    if (p->current.type == TOK_COLON) {
+        ParseResult result;
+
+        result = expect(p, TOK_COLON);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        return parse_type(p, type);
+    } else {
+        *type = TYPE_UNKNOWN;
+        return PARSE_OK;
+    }
+}
+
 // <function> -> TOK_KW_DEF TOK_ID TOK_LEFT_PARENTHESIS <parameters> TOK_RIGHT_PARENTHESIS <optional_type> TOK_ASSIGN
 // <function_body>
 static ParseResult parse_function(Parser *p, AstNode **out) {
-    (void)p;
-    (void)out;
-    return PARSE_SYNTAX_ERROR;
+    ParseResult result;
+
+    // TOK_KW_DEF
+    result = expect(p, TOK_KW_DEF);
+    if (result != PARSE_OK) {
+        return result;
+    }
 }
 
 // <function_main> -> TOK_AT TOK_ID <optional_eol> <function>
