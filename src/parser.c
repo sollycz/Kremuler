@@ -470,9 +470,71 @@ static ParseResult parse_while(Parser *p, AstNode **out) {
 
 // <if> -> TOK_KW_IF <expression> TOK_KW_THEN TOK_EOL <block> TOK_KW_ELSE TOK_EOL <block>
 static ParseResult parse_if(Parser *p, AstNode **out) {
-    (void)p;
-    (void)out;
-    return PARSE_SYNTAX_ERROR;
+    ParseResult result;
+
+    AstNode *node = ast_new(AST_IF, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    // TOK_KW_IF
+    result = expect(p, TOK_KW_IF);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <expression>
+    result = parse_expression(p, &node->as.if_statement.condition);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_KW_THEN
+    result = expect(p, TOK_KW_THEN);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_EOL
+    result = expect(p, TOK_EOL);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <block>
+    result = parse_block(p, &node->as.if_statement.then_block);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_KW_ELSE
+    result = expect(p, TOK_KW_ELSE);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_EOL
+    result = expect(p, TOK_EOL);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // <block>
+    result = parse_block(p, &node->as.if_statement.else_block);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
 }
 
 // <statement_simple> -> <variable> | <assign> | <return> | <expression>
