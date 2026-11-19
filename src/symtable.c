@@ -188,11 +188,7 @@ stab_func *stab_add_func(stab *st,
 
     f->ret_type = ret_type;
     f->ret_explicit = ret_explicit;
-    if (ret_explicit) {
-        f->infer = INFER_DONE;
-    } else {
-        f->infer = INFER_NONE;
-    }
+    f->infer = INFER_NONE;
     f->is_extension = extends != NULL;
 
     f->name = str_copy(name);
@@ -248,7 +244,7 @@ static const stab_func BUILTINS[] = {
     {.name = "print",
      .builtin = BI_PRINT,
      .ret_type = TYPE_UNIT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_ANY}}, 1}},
+     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_ANY, 0}}, 1}},
      .list_count = 1},
     {.name = "readLine",
      .builtin = BI_READLINE,
@@ -273,54 +269,55 @@ static const stab_func BUILTINS[] = {
     {.name = "toStr",
      .builtin = BI_TOSTR,
      .ret_type = TYPE_STRING,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_ANY}}, 1}},
+     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_ANY, 0}}, 1}},
      .list_count = 1},
     {.name = "toInt",
      .builtin = BI_TOINT,
      .ret_type = TYPE_INT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_DOUBLE}}, 1}},
+     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_DOUBLE, 0}}, 1}},
      .list_count = 1},
     {.name = "strLength",
      .builtin = BI_STRLENGTH,
      .ret_type = TYPE_INT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_STRING}}, 1}},
+     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_STRING, 0}}, 1}},
      .list_count = 1},
     {.name = "subStr",
      .builtin = BI_SUBSTR,
      .ret_type = TYPE_STRING,
      .param_lists =
-         (stab_param_list[]){{(stab_param[]){{"value", TYPE_STRING}, {"start", TYPE_INT}, {"end", TYPE_INT}}, 3}},
+         (stab_param_list[]){
+             {(stab_param[]){{"value", TYPE_STRING, 0}, {"start", TYPE_INT, 0}, {"end", TYPE_INT, 0}}, 3}},
      .list_count = 1},
     {.name = "ord",
      .builtin = BI_ORD,
      .ret_type = TYPE_INT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_STRING}, {"index", TYPE_INT}}, 2}},
+     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_STRING, 0}, {"index", TYPE_INT, 0}}, 2}},
      .list_count = 1},
     {.name = "chr",
      .builtin = BI_CHR,
      .ret_type = TYPE_STRING,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"code", TYPE_INT}}, 1}},
+     .param_lists = (stab_param_list[]){{(stab_param[]){{"code", TYPE_INT, 0}}, 1}},
      .list_count = 1},
     {.name = "toString",
      .builtin = BI_M_TOSTRING,
      .ret_type = TYPE_STRING,
      .is_extension = true,
-     .extends = {"value", TYPE_ANY}},
+     .extends = {"value", TYPE_ANY, 0}},
     {.name = "toInt",
      .builtin = BI_M_TOINT,
      .ret_type = TYPE_INT,
      .is_extension = true,
-     .extends = {"value", TYPE_DOUBLE}},
+     .extends = {"value", TYPE_DOUBLE, 0}},
     {.name = "floor",
      .builtin = BI_M_FLOOR,
      .ret_type = TYPE_DOUBLE,
      .is_extension = true,
-     .extends = {"value", TYPE_DOUBLE}},
+     .extends = {"value", TYPE_DOUBLE, 0}},
     {.name = "length",
      .builtin = BI_M_LENGTH,
      .ret_type = TYPE_INT,
      .is_extension = true,
-     .extends = {"value", TYPE_STRING}},
+     .extends = {"value", TYPE_STRING, 0}},
     {.name = NULL}};
 
 // return false on ST_NOMEM error
