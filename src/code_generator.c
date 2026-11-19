@@ -1,0 +1,646 @@
+/**
+ * @file code_generator.c
+ * @brief Implementation of the code generator
+ * @author Tomáš Neckař (xneckat00)
+ */
+
+#include "ast.h"
+#include "symtable.h"
+#include <assert.h>
+#include <stdio.h>
+
+void generate_code(AstNode *ast, stab *stab);
+static void gen_node(AstNode *node);
+static void gen_builtin_funcs(void);
+
+static stab *st;
+
+static unsigned int if_counter;
+static unsigned int while_counter;
+
+void generate_code(AstNode *ast, stab *stab) {
+    assert(ast != NULL && ast->node_kind == AST_PROGRAM);
+    assert(stab != NULL && stab_main(stab));
+
+    st = stab;
+
+    // walk through the whole AST and generate code (preorder)
+    gen_node(ast);
+}
+
+static void gen_node(AstNode *node) {
+    stab_func *func = NULL;
+    unsigned int counter_save = 0;
+    switch (node->node_kind) {
+    case AST_PROGRAM:
+
+        printf(".IFJcode26\n");
+        printf("DEFVAR GF@tmp1\n");
+        printf("DEFVAR GF@tmp2\n");
+        printf("DEFVAR GF@tmp3\n");
+
+        stab_func *main = stab_main(st);
+
+        printf("CREATEFRAME\n");
+        printf("PUSHFRAME\n");
+        printf("CALL %s\n", main->name);
+        printf("POPFRAME\n");
+        printf("EXIT int@0\n");
+
+        // gen main func first
+        for (size_t i = 0; i < node->as.program.functions.count; i++) {
+            AstNode *func = node->as.program.functions.items[i];
+            if (func->as.function.is_main_func) {
+                gen_node(func);
+                break;
+            }
+        }
+
+        // gen other funcs
+        for (size_t i = 0; i < node->as.program.functions.count; i++) {
+            AstNode *func = node->as.program.functions.items[i];
+            if (!func->as.function.is_main_func) {
+                gen_node(func);
+            }
+        }
+
+        // gen builtin funcs
+        gen_builtin_funcs();
+        break;
+    case AST_FUNCTION:
+
+        // start of func
+        printf("LABEL %s\n", node->as.function.name);
+
+        func = stab_find_func(st, node->as.function.name, NULL);
+        assert(func != NULL);
+
+        // TODO: uses undocumented feature where params always start at 0
+        // gen DEFVARs for locals throughout the whole func
+        for (size_t i = node->as.function.parameters.count; i < func->locals_count; i++) {
+            // local frame: var_name$autoinc_id
+            printf("DEFVAR LF@%s$%u\n", func->locals[i]->name, func->locals[i]->id);
+        }
+
+        gen_node(node->as.function.block);
+
+        // TODO: add returns in the final statement
+        // TODO: add nop statement POPS
+
+        break;
+    case AST_PARAMETER:
+
+        // should never run
+        assert(false);
+
+        break;
+    case AST_BLOCK:
+
+        // gen all statements sequentially
+        for (size_t i = 0; i < node->as.block.statements.count; i++) {
+            gen_node(node->as.block.statements.items[i]);
+        }
+
+        break;
+    case AST_WHILE:
+
+        counter_save = while_counter++;
+
+        // condition
+        printf("LABEL while$start$%u\n", counter_save);
+        gen_node(node->as.while_statement.condition);
+        printf("PUSHS bool@false\n");
+        printf("JUMPIFEQS while$end$%u\n", counter_save);
+
+        // main block
+        gen_node(node->as.while_statement.block);
+
+        // unconditional jump
+        printf("JUMP while$start$%u\n", counter_save);
+        // after loop label
+        printf("LABEL while$end$%u\n", counter_save);
+
+        break;
+    case AST_IF:
+
+        counter_save = if_counter++;
+
+        gen_node(node->as.if_statement.condition);
+        printf("PUSHS bool@false\n");
+        printf("JUMPIFEQS else$%u\n", counter_save);
+
+        // if/then block
+        gen_node(node->as.if_statement.then_block);
+        printf("JUMP if$%u\n", counter_save);
+
+        // else block
+        printf("LABEL else$%u\n", counter_save);
+        // TODO: check syn./sem. analysis
+        if (node->as.if_statement.else_block != NULL) {
+            gen_node(node->as.if_statement.else_block);
+        }
+
+        printf("LABEL if$%u\n", counter_save);
+
+        break;
+    case AST_VARIABLE_DEFINITION:
+
+        // evaluate right-side value first
+        gen_node(node->as.variable_definition.value);
+
+        // int to float expansion
+        if (node->as.variable_definition.value->type == TYPE_INT &&
+            node->as.variable_definition.declared_type == TYPE_DOUBLE) {
+            printf("INT2FLOATS\n");
+        }
+
+        // local was already defined at the start of the func
+        // assign right-side value from data stack
+        printf("POPS LF@%s$%u\n", node->as.variable_definition.name, node->var_id);
+
+        break;
+    case AST_ASSIGN:
+
+        // evaluate right-side value first
+        gen_node(node->as.assign.value);
+
+        // int to float expansion
+        if (node->as.assign.value->type == TYPE_INT && node->type == TYPE_DOUBLE) {
+            printf("INT2FLOATS\n");
+        }
+
+        // assign right-side value from data stack
+        printf("POPS LF@%s$%u\n", node->as.assign.name, node->var_id);
+
+        break;
+    case AST_RETURN:
+
+        // eval return value
+        if (node->as.return_statement.value != NULL) {
+            gen_node(node->as.return_statement.value);
+        } else {
+            // () - return Unit literal
+            printf("PUSHS nil@nil\n");
+        }
+
+        // TODO
+        // int to float expansion
+        // if (node->as.return_statement.value->type == TYPE_INT && node->type == TYPE_DOUBLE) {
+        //     printf("INT2FLOATS\n");
+        // }
+
+        printf("RETURN\n");
+
+        break;
+    case AST_EXPRESSION_STATEMENT:
+
+        // recurse deeper
+        gen_node(node->as.expression_statement.expression);
+
+        break;
+    case AST_LITERAL:
+
+        // just pushes value on the data stack
+        printf("PUSHS ");
+
+        switch (node->type) {
+        case TYPE_INT:
+            printf("int@%ld", node->as.literal.value.int_val);
+            break;
+        case TYPE_DOUBLE:
+            printf("float@%a", node->as.literal.value.double_val);
+            break;
+        case TYPE_STRING:
+            printf("string@");
+            for (size_t i = 0; node->as.literal.value.string_val[i] != '\0'; i++) {
+                unsigned char c = node->as.literal.value.string_val[i];
+                assert(c < 128);
+
+                if (c <= 32 || c == 35 || c == 92) {
+                    // escape char
+                    printf("\\%03d", c);
+                } else {
+                    // normal printout
+                    printf("%c", c);
+                }
+            }
+            break;
+        case TYPE_UNIT:
+            printf("nil@nil");
+            break;
+        case TYPE_BOOL:
+            printf("bool@%s", node->as.literal.value.int_val ? "true" : "false");
+            break;
+        }
+
+        printf("\n");
+
+        break;
+    case AST_IDENTIFIER:
+
+        // just pushes value on the data stack
+        printf("PUSHS LF@%s$%u\n", node->as.identifier.name, node->var_id);
+
+        break;
+    case AST_UNARY_OPERATOR:
+
+        AstNode *op = node->as.unary.operand;
+        switch (node->as.unary.operator_type) {
+        case OP_NEG:
+            assert(op->type == TYPE_INT || op->type == TYPE_DOUBLE);
+
+            // 0 - op
+            if (op->type == TYPE_INT) {
+                printf("PUSHS int@0\n");
+            } else {
+                printf("PUSHS float@%a\n", 0.0f);
+            }
+            gen_node(op);
+            printf("SUBS\n");
+
+            break;
+        case OP_POS:
+
+            // same as without the +
+            gen_node(op);
+
+            break;
+        case OP_NOT:
+            assert(op->type == TYPE_BOOL);
+
+            // !op
+            gen_node(op);
+            printf("NOTS\n");
+
+            break;
+        }
+
+        break;
+    case AST_BINARY_OPERATOR:
+
+        AstNode *l = node->as.binary.left;
+        AstNode *r = node->as.binary.right;
+
+        // assert types
+        switch (node->as.binary.operator_type) {
+        case OP_SUB:
+        case OP_DIV:
+        case OP_MUL:
+            assert((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE));
+            break;
+        case OP_ADD:
+        case OP_LT:
+        case OP_LE:
+        case OP_GT:
+        case OP_GE:
+            assert((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE) ||
+                   (l->type == TYPE_STRING && r->type == TYPE_STRING));
+            break;
+        case OP_EQ:
+        case OP_NE:
+            assert((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE) ||
+                   l->type == r->type);
+            break;
+        case OP_AND:
+        case OP_OR:
+            assert(l->type == TYPE_BOOL && r->type == TYPE_BOOL);
+            break;
+        }
+
+        // eval left op
+        gen_node(l);
+
+        // check for left op expand
+        bool expanded = false;
+        if (l->type == TYPE_INT && r->type == TYPE_DOUBLE) {
+            printf("INT2FLOATS\n");
+            expanded = true;
+        }
+
+        // eval right op
+        gen_node(r);
+
+        // check for right op expand
+        if (l->type == TYPE_DOUBLE && r->type == TYPE_INT) {
+            printf("INT2FLOATS\n");
+            expanded = true;
+        }
+
+        // eval binary op
+        switch (node->as.binary.operator_type) {
+        case OP_ADD:
+            if (l->type == TYPE_STRING) {
+                printf("POPS GF@tmp3\n"
+                       "POPS GF@tmp2\n"
+                       "CONCAT GF@tmp1 GF@tmp2 GF@tmp3\n"
+                       "PUSHS GF@tmp1\n");
+            } else {
+                printf("ADDS\n");
+            }
+            break;
+        case OP_SUB:
+            printf("SUBS\n");
+            break;
+        case OP_MUL:
+            printf("MULS\n");
+            break;
+        case OP_DIV:
+            if (expanded || l->type == TYPE_DOUBLE) {
+                // float
+                printf("DIVS\n");
+            } else {
+                // int
+                printf("IDIVS\n");
+            }
+            break;
+        case OP_LT:
+            printf("LTS\n");
+            break;
+        case OP_LE:
+            printf("POPS GF@tmp3\n"
+                   "POPS GF@tmp2\n"
+
+                   "EQ GF@tmp1 GF@tmp2 GF@tmp3\n"
+                   "PUSHS GF@tmp1\n"
+
+                   "LT GF@tmp1 GF@tmp2 GF@tmp3\n"
+                   "PUSHS GF@tmp1\n"
+
+                   "ORS\n");
+            break;
+        case OP_GT:
+            printf("GTS\n");
+            break;
+        case OP_GE:
+            printf("POPS GF@tmp3\n"
+                   "POPS GF@tmp2\n"
+
+                   "EQ GF@tmp1 GF@tmp2 GF@tmp3\n"
+                   "PUSHS GF@tmp1\n"
+
+                   "GT GF@tmp1 GF@tmp2 GF@tmp3\n"
+                   "PUSHS GF@tmp1\n"
+
+                   "ORS\n");
+            break;
+        case OP_EQ:
+            printf("EQS\n");
+            break;
+        case OP_NE:
+            printf("EQS\n");
+            printf("NOTS\n");
+            break;
+        case OP_AND:
+            printf("ANDS\n");
+            break;
+        case OP_OR:
+            printf("ORS\n");
+            break;
+        }
+
+        break;
+    case AST_CALL:
+
+        printf("CREATEFRAME\n");
+
+        func = stab_find_func(st, node->as.call.name, NULL);
+        assert(func != NULL);
+
+        // eval all args first
+        for (size_t i = 0; i < node->as.call.args.count; i++) {
+            AstNode *arg = node->as.call.args.items[i];
+
+            // eval arg
+            gen_node(arg);
+
+            // TODO: uses undocumented feature where params always start at 0
+            // int to float expansion
+            DataType param_type = func->is_builtin ? func->param_lists[0].params[i].type : func->locals[i]->type;
+            if (arg->type == TYPE_INT && param_type == TYPE_DOUBLE) {
+                printf("INT2FLOATS\n");
+            }
+        }
+
+        // TODO: uses undocumented feature where params always start at 0
+        // put the arg values inside temp frame
+        printf("CREATEFRAME\n");
+        for (int i = node->as.call.args.count - 1; i >= 0; i--) {
+            // def param and assign value
+            if (func->is_builtin) {
+                printf("DEFVAR TF@%s\n", func->param_lists[0].params[i].name);
+                printf("POPS TF@%s\n", func->param_lists[0].params[i].name);
+            } else {
+                printf("DEFVAR TF@%s$%u\n", func->locals[i]->name, func->locals[i]->id);
+                printf("POPS TF@%s$%u\n", func->locals[i]->name, func->locals[i]->id);
+            }
+        }
+
+        printf("PUSHFRAME\n");
+        printf("CALL %s\n", node->as.call.name);
+        printf("POPFRAME\n");
+
+        break;
+    }
+}
+
+static void gen_builtin_funcs(void) {
+    // print(value: Any): Unit
+    printf("LABEL print\n"
+           "PUSHS nil@nil\n"
+
+           // check for nil
+           "TYPE GF@tmp1 LF@value\n"
+           "JUMPIFNEQ else$%u GF@tmp1 string@nil\n"
+           "WRITE string@()\n"
+           "RETURN\n"
+
+           // normal types
+           "LABEL else$%u\n"
+           "WRITE LF@value\n"
+           "RETURN\n",
+           if_counter,
+           if_counter);
+    if_counter++;
+
+    // readLine(): String
+    printf("LABEL readLine\n"
+           "READ GF@tmp1 string\n"
+
+           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n"
+
+           "LABEL else$%u\n"
+           "PUSHS string@\n"
+           "RETURN\n",
+           if_counter,
+           if_counter);
+    if_counter++;
+
+    // readInt(): Int
+    printf("LABEL readInt\n"
+           "READ GF@tmp1 int\n"
+
+           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n"
+
+           "LABEL else$%u\n"
+           "PUSHS int@0\n"
+           "RETURN\n",
+           if_counter,
+           if_counter);
+    if_counter++;
+
+    // readDouble(): Double
+    printf("LABEL readDouble\n"
+           "READ GF@tmp1 float\n"
+
+           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n"
+
+           "LABEL else$%u\n"
+           "PUSHS float@%a\n"
+           "RETURN\n",
+           if_counter,
+           if_counter,
+           0.0f);
+    if_counter++;
+
+    // toStr(value: Any): String
+    printf("LABEL toStr\n"
+           "TYPE GF@tmp1 LF@value\n"
+           "PUSHS LF@value\n"
+
+           // string
+           "JUMPIFNEQ else$%u GF@tmp1 string@string\n"
+           "RETURN\n"
+           "LABEL else$%u\n"
+
+           // int
+           "JUMPIFNEQ else$%u GF@tmp1 string@int\n"
+           "INT2STRS\n"
+           "RETURN\n"
+           "LABEL else$%u\n"
+
+           // float
+           "JUMPIFNEQ else$%u GF@tmp1 string@float\n"
+           "FLOAT2STRS\n"
+           "RETURN\n"
+           "LABEL else$%u\n"
+
+           // nil
+           "POPS GF@tmp2\n"
+           "PUSHS string@()\n"
+           "RETURN\n",
+           if_counter,
+           if_counter,
+           if_counter + 1,
+           if_counter + 1,
+           if_counter + 2,
+           if_counter + 2);
+    if_counter += 3;
+
+    // toInt(value: Double): Int
+    printf("LABEL toInt\n"
+           "PUSHS LF@value\n"
+           "FLOAT2INTS\n"
+           "RETURN\n");
+
+    // strLength(value: String): Int
+    printf("LABEL strLength\n"
+           "STRLEN GF@tmp1 LF@value\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n");
+
+    // subStr(value: String, start: Int, end: Int): String
+    printf("LABEL subStr\n"
+
+           // start < 0
+           "LT GF@tmp1 LF@start int@0\n"
+           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+
+           // end < 0
+           "LT GF@tmp1 LF@end int@0\n"
+           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+
+           // start > end
+           "GT GF@tmp1 LF@start LF@end\n"
+           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+
+           // start >= strLength(value)
+           "STRLEN GF@tmp2 LF@value\n"
+           "GT GF@tmp1 LF@start GF@tmp2\n"
+           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$%u LF@start GF@tmp2\n"
+
+           // end > strLength(value)
+           "GT GF@tmp1 LF@end GF@tmp2\n"
+           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+
+           "MOVE GF@tmp1 string@\n"  // op1
+           "MOVE GF@tmp2 string@\n"  // op2
+           "MOVE GF@tmp3 LF@start\n" // index
+
+           "LABEL while$start$%u\n"
+           "JUMPIFEQ while$end$%u GF@tmp3 LF@end\n"
+
+           "GETCHAR GF@tmp2 LF@value GF@tmp3\n"
+           "CONCAT GF@tmp1 GF@tmp1 GF@tmp2\n"
+           "ADD GF@tmp3 GF@tmp3 int@1\n"
+
+           "JUMP while$start$%u\n"
+           "LABEL while$end$%u\n"
+
+           "PUSHS GF@tmp1\n"
+           "RETURN\n"
+
+           "LABEL else$%u\n"
+           "EXIT int@40\n", // exit 40 - runtime error
+           if_counter,
+           if_counter,
+           if_counter,
+           if_counter,
+           if_counter,
+           if_counter,
+           while_counter,
+           while_counter,
+           while_counter,
+           while_counter,
+           if_counter);
+    if_counter++;
+    while_counter++;
+
+    // ord(value: String, index: Int): Int
+    printf("LABEL ord\n"
+
+           // index < 0
+           "LT GF@tmp1 LF@index int@0\n"
+           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+
+           // index >= strLength(value)
+           "STRLEN GF@tmp2 LF@value\n"
+           "GT GF@tmp1 LF@index GF@tmp2\n"
+           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$%u LF@index GF@tmp2\n"
+
+           "STRI2INT GF@tmp1 LF@value LF@index\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n"
+
+           "LABEL else$%u\n"
+           "PUSHS int@-1\n"
+           "RETURN\n",
+           if_counter,
+           if_counter,
+           if_counter,
+           if_counter);
+    if_counter++;
+
+    // chr(code: Int): String
+    printf("LABEL chr\n"
+           "PUSHS LF@code\n"
+           "INT2CHARS\n"
+           "RETURN\n");
+}
