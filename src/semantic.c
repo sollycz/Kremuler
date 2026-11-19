@@ -15,6 +15,13 @@
 
 static stab *sem_st = NULL;
 
+typedef struct fn_chain {
+    const stab_func *fn;
+    const struct fn_chain *prev;
+} fn_chain;
+
+static const fn_chain *checking = NULL;
+
 static bool is_numeric(DataType t) {
     return t == TYPE_INT || t == TYPE_DOUBLE;
 }
@@ -310,10 +317,15 @@ static sem_res_t check_call(AstNode *node) {
 
     // recursion has to have explicit return type
     if (f->infer == INFER_RUNNING) {
-        return error(SEM_TYPE, node->line, "recursive function must have explicit return type");
-    }
-
-    if (f->infer == INFER_NONE) {
+        for (const fn_chain *c = checking;; c = c->prev) {
+            if (!c->fn->ret_explicit) {
+                return error(SEM_TYPE, node->line, "recursive function must have explicit return type");
+            }
+            if (c->fn == f) {
+                break;
+            }
+        }
+    } else if (f->infer == INFER_NONE) {
         sem_res_t res = check_fn(f);
         if (res != SEM_OK) {
             return res;
@@ -337,7 +349,7 @@ static sem_res_t check_ident(AstNode *node) {
     return SEM_OK;
 }
 
-static sem_res_t check_expr(AstNode *node) {
+static sem_res_t check_expr_bool(AstNode *node) {
     switch (node->node_kind) {
     case AST_LITERAL:
         // no need to check
@@ -358,6 +370,15 @@ static sem_res_t check_expr(AstNode *node) {
     default:
         return error(SEM_INTERNAL, node->line, "unexpected node in expression");
     }
+}
+
+// boolean hot fix
+static sem_res_t check_expr(AstNode *node) {
+    sem_res_t res = check_expr_bool(node);
+    if (res == SEM_OK && node->type == TYPE_BOOL) {
+        return error(SEM_TYPE, node->line, "Boolean value can be used only as a condition");
+    }
+    return res;
 }
 
 static sem_res_t check_var_def(AstNode *node) {
@@ -423,7 +444,7 @@ static sem_res_t check_assign(AstNode *node) {
 static sem_res_t check_block(AstNode *block);
 
 static sem_res_t check_cond(AstNode *cond) {
-    sem_res_t res = check_expr(cond);
+    sem_res_t res = check_expr_bool(cond);
     if (res != SEM_OK) {
         return res;
     }
@@ -500,8 +521,6 @@ static sem_res_t check_while(AstNode *node) {
 }
 
 static sem_res_t check_statement(AstNode *node) {
-    sem_res_t res;
-
     // without explicit return use TYPE_UNIT
     node->type = TYPE_UNIT;
 
@@ -529,34 +548,106 @@ static sem_res_t check_statement(AstNode *node) {
     }
 }
 
-static sem_res_t check_block(AstNode *block) {
+static sem_res_t check_statements(AstNode *block) {
     assert(block->node_kind == AST_BLOCK);
-
-    sem_res_t res = stab_res_convert(stab_enter_scope(sem_st));
-    if (res != SEM_OK) {
-        return res;
-    }
 
     const AstNodeList *statements = &block->as.block.statements;
     size_t st_len = statements->count;
 
     for (size_t i = 0; i < st_len; i++) {
-        res = check_statement(statements->items[i]);
+        sem_res_t res = check_statement(statements->items[i]);
         if (res != SEM_OK) {
             return res;
         }
+    }
+
+    return SEM_OK;
+}
+
+static sem_res_t check_block(AstNode *block) {
+    sem_res_t res = stab_res_convert(stab_enter_scope(sem_st));
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    res = check_statements(block);
+    if (res != SEM_OK) {
+        return res;
     }
 
     stab_leave_scope(sem_st);
     return SEM_OK;
 }
 
+static const AstNode *last_statement(const AstNode *block) {
+    const AstNodeList *statements = &block->as.block.statements;
+    return statements->items[statements->count - 1];
+}
+
+static bool all_branches_return(const AstNode *block) {
+    const AstNode *last = last_statement(block);
+
+    if (last->node_kind != AST_IF) {
+        return last->node_kind == AST_RETURN;
+    }
+
+    const AstNode *then_block = last->as.if_statement.then_block;
+    const AstNode *else_block = last->as.if_statement.else_block;
+
+    if (else_block == NULL) {
+        return false;
+    }
+
+    if (!all_branches_return(then_block)) {
+        return false;
+    }
+
+    return all_branches_return(else_block);
+}
+
+static bool all_branches_unit(const AstNode *block) {
+    const AstNode *last = last_statement(block);
+
+    if (last->node_kind != AST_IF) {
+        return last->type == TYPE_UNIT;
+    }
+
+    const AstNode *then_block = last->as.if_statement.then_block;
+    const AstNode *else_block = last->as.if_statement.else_block;
+
+    if (!all_branches_unit(then_block)) {
+        return false;
+    }
+
+    if (else_block == NULL) {
+        return true;
+    }
+
+    return all_branches_unit(else_block);
+}
+
+static bool if_at_end_allowed(const stab_func *fn, const AstNode *body) {
+    if (is_explicit_unit(fn)) {
+        return true;
+    }
+
+    if (all_branches_return(body)) {
+        return true;
+    }
+
+    if (!fn->ret_explicit && all_branches_unit(body)) {
+        return true;
+    }
+
+    return false;
+}
+
 static sem_res_t check_fn(stab_func *fn) {
     AstNode *ast = fn->ast_node;
 
-    if (!fn->ret_explicit) {
-        fn->infer = INFER_RUNNING;
-    }
+    fn_chain link = {fn, checking};
+    checking = &link;
+    fn->infer = INFER_RUNNING;
 
     sem_res_t res = stab_res_convert(stab_enter_func(sem_st, fn));
     if (res != SEM_OK) {
@@ -579,7 +670,7 @@ static sem_res_t check_fn(stab_func *fn) {
         first->as.expression_statement.expression = value;
     }
 
-    res = check_block(body);
+    res = check_statements(body);
     if (res != SEM_OK) {
         return res;
     }
@@ -588,9 +679,12 @@ static sem_res_t check_fn(stab_func *fn) {
     const AstNodeList *statements = &body->as.block.statements;
     const AstNode *last = statements->items[statements->count - 1];
 
+    if (last->node_kind == AST_IF && !if_at_end_allowed(fn, body)) {
+        return error(SEM_TYPE, last->line, "function body ending with if must return in every branch");
+    }
+
     if (!fn->ret_explicit) {
         fn->ret_type = last->type;
-        fn->infer = INFER_DONE;
 
     } else if (!is_explicit_unit(fn) && last->node_kind != AST_RETURN && last->node_kind != AST_IF) {
         if (!is_assignable(fn->ret_type, last->type)) {
@@ -601,6 +695,9 @@ static sem_res_t check_fn(stab_func *fn) {
     if (fn->is_main && fn->ret_type != TYPE_UNIT) {
         return error(SEM_TYPE, ast->line, "@main function must return Unit");
     }
+
+    fn->infer = INFER_DONE;
+    checking = link.prev;
 
     stab_leave_func(sem_st);
     return SEM_OK;
@@ -614,7 +711,7 @@ static sem_res_t check_fns(const AstNode *program) {
     for (size_t i = 0; i < fn_len; i++) {
         stab_func *fn = stab_find_func(sem_st, functions->items[i]->as.function.name, NULL);
 
-        if (!fn->ret_explicit && fn->infer != INFER_NONE) {
+        if (fn->infer != INFER_NONE) {
             continue;
         }
 
