@@ -276,6 +276,11 @@ static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
         if (result != PARSE_OK) {
             return result;
         }
+
+        // allow a trailing comma
+        if (p->current.type == TOK_RIGHT_PARENTHESIS && p->current.lf_before == true) {
+            break;
+        }
     }
 
     return PARSE_OK;
