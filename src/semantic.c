@@ -528,6 +528,16 @@ static sem_res_t check_fn(stab_func *fn) {
     }
 
     AstNode *body = ast->as.function.block;
+
+    // 'def f() = expr' is treated as AST_RETURN by parser, even tho it is not
+    // solution is to convert it to an AST_EXPRESSION_STATEMENT
+    AstNode *first = body->as.block.statements.items[0];
+    if (body->line == ast->line && first->node_kind == AST_RETURN) {
+        AstNode *value = first->as.return_statement.value;
+        first->node_kind = AST_EXPRESSION_STATEMENT;
+        first->as.expression_statement.expression = value;
+    }
+
     res = check_block(body);
     if (res != SEM_OK) {
         return res;
