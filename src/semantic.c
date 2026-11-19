@@ -362,6 +362,8 @@ static sem_res_t check_var_def(AstNode *node) {
     DataType type = node->as.variable_definition.declared_type;
     if (type == TYPE_UNKNOWN) {
         type = value->type;
+    } else if (!is_assignable(type, value->type)) {
+        return error(SEM_TYPE, node->line, "incompatible initialization of variable");
     }
 
     stab_res_t st_res;
@@ -388,13 +390,41 @@ static sem_res_t check_assign(AstNode *node) {
         return error(SEM_UNDEFINED, node->line, "assignment to undefined variable");
     }
 
+    if (!v->is_mutable) {
+        return error(SEM_IMMUTABLE, node->line, "assignment to immutable variable");
+    }
+
+    AstNode *value = node->as.assign.value;
+
+    sem_res_t res = check_expr(value);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    if (!is_assignable(v->type, value->type)) {
+        return error(SEM_TYPE, node->line, "incompatible type in assignment");
+    }
+
     node->var_id = v->id;
 
-    return check_expr(node->as.assign.value);
+    return SEM_OK;
 }
 
 // todo: not a great solution, rework
 static sem_res_t check_block(AstNode *block);
+
+static sem_res_t check_cond(AstNode *cond) {
+    sem_res_t res = check_expr(cond);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    if (cond->type != TYPE_BOOL) {
+        return error(SEM_TYPE, cond->line, "condition must be Boolean");
+    }
+
+    return SEM_OK;
+}
 
 static sem_res_t check_statement(AstNode *node) {
     sem_res_t res;
@@ -432,7 +462,7 @@ static sem_res_t check_statement(AstNode *node) {
         return SEM_OK;
 
     case AST_IF:
-        res = check_expr(node->as.if_statement.condition);
+        res = check_cond(node->as.if_statement.condition);
         if (res != SEM_OK) {
             return res;
         }
@@ -447,7 +477,7 @@ static sem_res_t check_statement(AstNode *node) {
         return SEM_OK;
 
     case AST_WHILE:
-        res = check_expr(node->as.while_statement.condition);
+        res = check_cond(node->as.while_statement.condition);
         if (res != SEM_OK) {
             return res;
         }
