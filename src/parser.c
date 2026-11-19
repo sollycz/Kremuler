@@ -87,6 +87,11 @@ ParseResult next_token(Parser *p) {
         p->current.indent = 0;
     }
 
+    if (!p->at_line_start && p->current.lf_before == true &&
+        p->current.indent <= p->indent_stack[p->indent_count - 1]) {
+        return PARSE_LEXICAL_ERROR;
+    }
+
     if (!p->at_line_start) {
         return PARSE_OK;
     }
@@ -102,6 +107,7 @@ ParseResult next_token(Parser *p) {
             return result;
         }
 
+        p->current.lf_before = false;
         // store the real token as lookahead and return an INDENT token
         p->lookahead = p->current;
         p->has_lookahead = true;
