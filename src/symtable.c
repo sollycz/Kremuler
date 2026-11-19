@@ -22,15 +22,15 @@ typedef struct scope {
 struct stab {
     htab *funcs;
     stab_func *main;
-    scope *top;
+    scope *current_scope; // top of scope stack
 };
 
 // key for function table
 // name is owned by function.name
 typedef struct {
     const char *name;
-    bool is_method;
-    DataType receiver_type;
+    bool is_extension;
+    DataType extends_type;
 } stab_func_key;
 
 // djb2 hash function used for variables and function names
@@ -45,13 +45,13 @@ static htab_size_t djb2(const unsigned char *s) {
 }
 
 // hash function for stab_func_key
-// received type is only mixed in for methods
+// extends type is only mixed in for methods
 static htab_size_t func_hash(htab_key_t key) {
     const stab_func_key *k = key;
     htab_size_t hash = djb2((const unsigned char *)k->name);
-    if (k->is_method) {
+    if (k->is_extension) {
         hash = (hash << 5) + hash;
-        hash += (htab_size_t)k->receiver_type + 1;
+        hash += (htab_size_t)k->extends_type + 1;
     }
     return hash;
 }
@@ -68,10 +68,10 @@ static bool eq_fn(htab_key_t a, htab_key_t b) {
     if (strcmp(x->name, y->name) != 0) {
         return false;
     }
-    if (x->is_method != y->is_method) {
+    if (x->is_extension != y->is_extension) {
         return false;
     }
-    if (x->is_method && x->receiver_type != y->receiver_type) {
+    if (x->is_extension && x->extends_type != y->extends_type) {
         return false;
     }
     return true;
@@ -99,7 +99,7 @@ static void value_free_fn(void *ptr) {
     }
     free(f->locals);
 
-    free((void *)f->receiver.name);
+    free((void *)f->extends.name);
     free((void *)f->name);
     free(f);
 }
@@ -177,7 +177,7 @@ stab_func *stab_add_func(stab *st,
                          stab_size_t list_count,
                          DataType ret_type,
                          bool ret_explicit,
-                         const stab_param *receiver,
+                         const stab_param *extends,
                          stab_res_t *res) {
 
     stab_func *f = calloc(1, sizeof *f);
@@ -193,7 +193,7 @@ stab_func *stab_add_func(stab *st,
     } else {
         f->infer = INFER_NONE;
     }
-    f->is_method = receiver != NULL;
+    f->is_extension = extends != NULL;
 
     f->name = str_copy(name);
     if (!f->name) {
@@ -208,14 +208,14 @@ stab_func *stab_add_func(stab *st,
         return NULL;
     }
 
-    if (receiver) {
-        f->receiver.name = str_copy(receiver->name);
-        if (!f->receiver.name) {
+    if (extends) {
+        f->extends.name = str_copy(extends->name);
+        if (!f->extends.name) {
             value_free_fn(f);
             *res = ST_NOMEM;
             return NULL;
         }
-        f->receiver.type = receiver->type;
+        f->extends.type = extends->type;
     }
 
     stab_func_key *key = malloc(sizeof *key);
@@ -225,8 +225,8 @@ stab_func *stab_add_func(stab *st,
         return NULL;
     }
     key->name = f->name;
-    key->is_method = f->is_method;
-    key->receiver_type = f->receiver.type;
+    key->is_extension = f->is_extension;
+    key->extends_type = f->extends.type;
 
     htab_res_t hi = htab_insert(st->funcs, key, f);
     if (hi != HTAB_OK) {
@@ -304,32 +304,32 @@ static const stab_func BUILTINS[] = {
     {.name = "toString",
      .builtin = BI_M_TOSTRING,
      .ret_type = TYPE_STRING,
-     .is_method = true,
-     .receiver = {"value", TYPE_ANY}},
+     .is_extension = true,
+     .extends = {"value", TYPE_ANY}},
     {.name = "toInt",
      .builtin = BI_M_TOINT,
      .ret_type = TYPE_INT,
-     .is_method = true,
-     .receiver = {"value", TYPE_DOUBLE}},
+     .is_extension = true,
+     .extends = {"value", TYPE_DOUBLE}},
     {.name = "floor",
      .builtin = BI_M_FLOOR,
      .ret_type = TYPE_DOUBLE,
-     .is_method = true,
-     .receiver = {"value", TYPE_DOUBLE}},
+     .is_extension = true,
+     .extends = {"value", TYPE_DOUBLE}},
     {.name = "length",
      .builtin = BI_M_LENGTH,
      .ret_type = TYPE_INT,
-     .is_method = true,
-     .receiver = {"value", TYPE_STRING}},
+     .is_extension = true,
+     .extends = {"value", TYPE_STRING}},
     {.name = NULL}};
 
 // return false on ST_NOMEM error
 static bool register_builtin_fns(stab *st) {
     for (stab_size_t i = 0; BUILTINS[i].name != NULL; i++) {
 
-        const stab_param *pr_receiver = NULL;
-        if (BUILTINS[i].is_method) {
-            pr_receiver = &BUILTINS[i].receiver;
+        const stab_param *pr_extends = NULL;
+        if (BUILTINS[i].is_extension) {
+            pr_extends = &BUILTINS[i].extends;
         }
 
         stab_res_t res;
@@ -339,7 +339,7 @@ static bool register_builtin_fns(stab *st) {
                                      BUILTINS[i].list_count,
                                      BUILTINS[i].ret_type,
                                      true,
-                                     pr_receiver,
+                                     pr_extends,
                                      &res);
         if (f == NULL || res != ST_OK) {
             return false;
@@ -360,7 +360,7 @@ stab *stab_new() {
     }
 
     st->main = NULL;
-    st->top = NULL;
+    st->current_scope = NULL;
 
     st->funcs = htab_init(INITIAL_HTAB_CAPACITY, func_hash, eq_fn, free, value_free_fn);
     if (st->funcs == NULL) {
@@ -382,7 +382,7 @@ void stab_free(stab *st) {
         return;
     }
 
-    while (st->top != NULL) {
+    while (st->current_scope != NULL) {
         stab_leave_scope(st);
     }
 
@@ -409,7 +409,7 @@ stab_func *stab_main(const stab *st) {
 
 // used for: while for etc. inherits the function from its parent
 stab_res_t stab_enter_scope(stab *st) {
-    assert(st != NULL && st->top != NULL);
+    assert(st != NULL && st->current_scope != NULL);
     scope *s = malloc(sizeof *s);
     if (!s) {
         return ST_NOMEM;
@@ -420,9 +420,9 @@ stab_res_t stab_enter_scope(stab *st) {
         free(s);
         return ST_NOMEM;
     }
-    s->func = st->top->func;
-    s->parent = st->top;
-    st->top = s;
+    s->func = st->current_scope->func;
+    s->parent = st->current_scope;
+    st->current_scope = s;
     return ST_OK;
 }
 
@@ -439,37 +439,37 @@ stab_res_t stab_enter_func(stab *st, stab_func *fn) {
         return ST_NOMEM;
     }
     s->func = fn;
-    s->parent = st->top;
-    st->top = s;
+    s->parent = st->current_scope;
+    st->current_scope = s;
     return ST_OK;
 }
 
 void stab_leave_scope(stab *st) {
-    if (!st || !st->top) {
+    if (!st || !st->current_scope) {
         return;
     }
-    scope *s = st->top;
-    st->top = s->parent;
+    scope *s = st->current_scope;
+    st->current_scope = s->parent;
     htab_destroy(s->vars);
     free(s);
 }
 
 void stab_leave_func(stab *st) {
-    if (!st || !st->top) {
+    if (!st || !st->current_scope) {
         return;
     }
-    stab_func *fn = st->top->func;
-    while (st->top && st->top->func == fn) {
+    stab_func *fn = st->current_scope->func;
+    while (st->current_scope && st->current_scope->func == fn) {
         stab_leave_scope(st);
     }
 }
 
 stab_func *stab_current_func(const stab *st) {
-    if (!st || !st->top) {
+    if (!st || !st->current_scope) {
         return NULL;
     }
 
-    return st->top->func;
+    return st->current_scope->func;
 }
 
 // allocates variable and adds it to function.locals
@@ -503,11 +503,11 @@ static stab_var *add_local(stab_func *f, const char *name, DataType type, bool i
 }
 
 stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res) {
-    assert(st != NULL && st->top != NULL && st->top->func != NULL);
+    assert(st != NULL && st->current_scope != NULL && st->current_scope->func != NULL);
 
-    stab_func *f = st->top->func;
+    stab_func *f = st->current_scope->func;
 
-    if (htab_get(st->top->vars, name, NULL)) {
+    if (htab_get(st->current_scope->vars, name, NULL)) {
         *res = ST_REDEFINED;
         return NULL;
     }
@@ -518,7 +518,7 @@ stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mu
         return NULL;
     }
 
-    htab_res_t rh = htab_insert(st->top->vars, v->name, v);
+    htab_res_t rh = htab_insert(st->current_scope->vars, v->name, v);
 
     if (rh == HTAB_OK) {
         *res = ST_OK;
@@ -533,13 +533,13 @@ stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mu
 }
 
 stab_var *stab_create_temp_var(stab *st, DataType type) {
-    assert(st != NULL && st->top != NULL && st->top->func != NULL);
-    return add_local(st->top->func, NULL, type, true);
+    assert(st != NULL && st->current_scope != NULL && st->current_scope->func != NULL);
+    return add_local(st->current_scope->func, NULL, type, true);
 }
 
 stab_var *stab_find_var(const stab *st, const char *name) {
     assert(st != NULL);
-    for (const scope *s = st->top; s != NULL && s->func == st->top->func; s = s->parent) {
+    for (const scope *s = st->current_scope; s != NULL && s->func == st->current_scope->func; s = s->parent) {
         htab_value_t out;
         if (htab_get(s->vars, name, &out)) {
             return out;
@@ -548,13 +548,13 @@ stab_var *stab_find_var(const stab *st, const char *name) {
     return NULL;
 }
 
-stab_func *stab_find_func(const stab *st, const char *name, const DataType *receiver) {
+stab_func *stab_find_func(const stab *st, const char *name, const DataType *extends) {
     assert(st != NULL && name != NULL);
 
     stab_func_key key = {
         .name = name,
-        .is_method = receiver != NULL,
-        .receiver_type = receiver ? *receiver : TYPE_UNKNOWN,
+        .is_extension = extends != NULL,
+        .extends_type = extends ? *extends : TYPE_UNKNOWN,
     };
 
     htab_value_t out;
@@ -562,8 +562,8 @@ stab_func *stab_find_func(const stab *st, const char *name, const DataType *rece
         return out;
     }
 
-    if (receiver && *receiver != TYPE_ANY) {
-        key.receiver_type = TYPE_ANY;
+    if (extends && *extends != TYPE_ANY) {
+        key.extends_type = TYPE_ANY;
         if (htab_get(st->funcs, &key, &out)) {
             return out;
         }

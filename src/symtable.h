@@ -66,7 +66,7 @@ typedef struct {
 } stab_param_list;
 
 // function / method record
-// name, is_method and receiver.type are used as key for hashtable
+// name, is_extension and extends.type are used as key for hashtable
 // changing them will make the record non accessible
 struct stab_func {
     const char *name;
@@ -80,9 +80,9 @@ struct stab_func {
     stab_var **locals; // used for code gen declarations
     stab_size_t locals_count;
     stab_infer_t infer;
-    bool is_method;
-    stab_param receiver; // EXTKW extension (only for is_method = true)
-    void *ast_node;      // AST node of the definition
+    bool is_extension;
+    stab_param extends; // EXTKW extension (only for is_extension = true)
+    void *ast_node;     // AST node of the definition
 };
 
 // creates new symbol table, otherwise returns null
@@ -93,7 +93,7 @@ stab *stab_new(void);
 void stab_free(stab *st);
 
 // adds function or method to symtable, returns stab_func or null
-// receiver == null -> normal function
+// extends == null -> normal function
 // specific reason for failure can be found in *res
 // redefining a function, even a builtin one, will result into ST_REDEFINED
 stab_func *stab_add_func(stab *st,
@@ -102,13 +102,13 @@ stab_func *stab_add_func(stab *st,
                          stab_size_t list_count,
                          DataType ret_type,
                          bool ret_explicit,
-                         const stab_param *receiver,
+                         const stab_param *extends,
                          stab_res_t *res);
 
 // finds function or method by name, otherwise returns null
-// receiver == null -> normal function
-// if no function with given receiver exists, falls back to receiver.type TYPE_ANY
-stab_func *stab_find_func(const stab *st, const char *name, const DataType *receiver);
+// extends == null -> normal function
+// if no function with given extends exists, falls back to extends.type TYPE_ANY
+stab_func *stab_find_func(const stab *st, const char *name, const DataType *extends);
 
 // returns the main fn or null, if main was not set
 stab_func *stab_main(const stab *st);
