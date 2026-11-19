@@ -84,8 +84,13 @@ static void gen_node(AstNode *node) {
 
         gen_node(node->as.function.block);
 
-        // TODO: add returns in the final statement
-        // TODO: add nop statement POPS
+        // add return in the final statement if only implicit
+        AstNodeList *statements = &node->as.function.block->as.block.statements;
+        AstNode *last = statements->items[statements->count - 1];
+        if (last->node_kind != AST_EXPRESSION_STATEMENT) {
+            printf("PUSHS nil@nil\n");
+        }
+        printf("RETURN\n");
 
         break;
     case AST_PARAMETER:
