@@ -818,12 +818,17 @@ static ParseResult parse_function_main(Parser *p, AstNode **out) {
     ParseResult result;
 
     // TOK_AT
+    unsigned int at_line = p->current.line;
+    unsigned int at_column = p->current.column;
     result = expect(p, TOK_AT);
     if (result != PARSE_OK) {
         return result;
     }
 
     // TOK_ID
+    if (p->current.line != at_line || p->current.column != at_column + 1) {
+        return PARSE_LEXICAL_ERROR;
+    }
     if (p->current.type != TOK_ID) {
         return PARSE_SYNTAX_ERROR;
     }
