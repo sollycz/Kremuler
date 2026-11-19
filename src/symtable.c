@@ -139,6 +139,7 @@ static bool copy_param_list(stab_param_list *dst, const stab_param_list *src) {
     dst->count = src->count;
 
     for (stab_size_t i = 0; i < src->count; i++) {
+        dst->params[i].id = src->params[i].id;
         dst->params[i].type = src->params[i].type;
         dst->params[i].name = str_copy(src->params[i].name);
         if (!dst->params[i].name) {

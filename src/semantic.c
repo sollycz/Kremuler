@@ -166,7 +166,7 @@ static sem_res_t collect_fns(const AstNode *program) {
     return SEM_OK;
 }
 
-static sem_res_t declare_params(AstNode *fn) {
+static sem_res_t declare_params(AstNode *fn, stab_func *f) {
     const AstNodeList *params = &fn->as.function.parameters;
     size_t params_len = params->count;
 
@@ -184,6 +184,7 @@ static sem_res_t declare_params(AstNode *fn) {
 
         // for codegen
         param->var_id = v->id;
+        f->param_lists[0].params[i].id = v->id;
     }
 
     return SEM_OK;
@@ -562,7 +563,7 @@ static sem_res_t check_fn(stab_func *fn) {
         return res;
     }
 
-    res = declare_params(ast);
+    res = declare_params(ast, fn);
     if (res != SEM_OK) {
         return res;
     }

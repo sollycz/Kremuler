@@ -57,6 +57,7 @@ typedef enum { INFER_NONE, INFER_RUNNING, INFER_DONE } stab_infer_t;
 typedef struct {
     const char *name;
     DataType type;
+    unsigned id; // var id set by semantic. usefull for codegen.
 } stab_param;
 
 typedef struct {
