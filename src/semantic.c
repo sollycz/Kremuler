@@ -567,10 +567,22 @@ static sem_res_t check_fn(stab_func *fn) {
         return res;
     }
 
+    // result of the body is given by its last statement
+    const AstNodeList *statements = &body->as.block.statements;
+    const AstNode *last = statements->items[statements->count - 1];
+
     if (!fn->ret_explicit) {
-        const AstNodeList *stmts = &body->as.block.statements;
-        fn->ret_type = stmts->items[stmts->count - 1]->type;
+        fn->ret_type = last->type;
         fn->infer = INFER_DONE;
+
+    } else if (!is_explicit_unit(fn) && last->node_kind != AST_RETURN && last->node_kind != AST_IF) {
+        if (!is_assignable(fn->ret_type, last->type)) {
+            return error(SEM_TYPE, last->line, "result of function body does not match return type");
+        }
+    }
+
+    if (fn->is_main && fn->ret_type != TYPE_UNIT) {
+        return error(SEM_TYPE, ast->line, "@main function must return Unit");
     }
 
     stab_leave_func(sem_st);
