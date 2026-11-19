@@ -14,6 +14,7 @@ static void gen_node(AstNode *node);
 static void gen_builtin_funcs(void);
 
 static stab *st;
+static stab_func *current_func;
 
 static unsigned int if_counter;
 static unsigned int while_counter;
@@ -29,8 +30,6 @@ void generate_code(AstNode *ast, stab *stab) {
 }
 
 static void gen_node(AstNode *node) {
-    stab_func *func = NULL;
-    unsigned int counter_save = 0;
     switch (node->node_kind) {
     case AST_PROGRAM:
 
@@ -72,14 +71,14 @@ static void gen_node(AstNode *node) {
         // start of func
         printf("LABEL %s\n", node->as.function.name);
 
-        func = stab_find_func(st, node->as.function.name, NULL);
-        assert(func != NULL);
+        current_func = stab_find_func(st, node->as.function.name, NULL);
+        assert(current_func != NULL);
 
         // TODO: uses undocumented feature where params always start at 0
         // gen DEFVARs for locals throughout the whole func
-        for (size_t i = node->as.function.parameters.count; i < func->locals_count; i++) {
+        for (size_t i = node->as.function.parameters.count; i < current_func->locals_count; i++) {
             // local frame: var_name$autoinc_id
-            printf("DEFVAR LF@%s$%u\n", func->locals[i]->name, func->locals[i]->id);
+            printf("DEFVAR LF@%s$%u\n", current_func->locals[i]->name, current_func->locals[i]->id);
         }
 
         gen_node(node->as.function.block);
@@ -109,43 +108,43 @@ static void gen_node(AstNode *node) {
         break;
     case AST_WHILE:
 
-        counter_save = while_counter++;
+        unsigned int while_save = while_counter++;
 
         // condition
-        printf("LABEL while$start$%u\n", counter_save);
+        printf("LABEL while$start$%u\n", while_save);
         gen_node(node->as.while_statement.condition);
         printf("PUSHS bool@false\n");
-        printf("JUMPIFEQS while$end$%u\n", counter_save);
+        printf("JUMPIFEQS while$end$%u\n", while_save);
 
         // main block
         gen_node(node->as.while_statement.block);
 
         // unconditional jump
-        printf("JUMP while$start$%u\n", counter_save);
+        printf("JUMP while$start$%u\n", while_save);
         // after loop label
-        printf("LABEL while$end$%u\n", counter_save);
+        printf("LABEL while$end$%u\n", while_save);
 
         break;
     case AST_IF:
 
-        counter_save = if_counter++;
+        unsigned int if_save = if_counter++;
 
         gen_node(node->as.if_statement.condition);
         printf("PUSHS bool@false\n");
-        printf("JUMPIFEQS else$%u\n", counter_save);
+        printf("JUMPIFEQS else$%u\n", if_save);
 
         // if/then block
         gen_node(node->as.if_statement.then_block);
-        printf("JUMP if$%u\n", counter_save);
+        printf("JUMP if$%u\n", if_save);
 
         // else block
-        printf("LABEL else$%u\n", counter_save);
+        printf("LABEL else$%u\n", if_save);
         // TODO: check syn./sem. analysis
         if (node->as.if_statement.else_block != NULL) {
             gen_node(node->as.if_statement.else_block);
         }
 
-        printf("LABEL if$%u\n", counter_save);
+        printf("LABEL if$%u\n", if_save);
 
         break;
     case AST_VARIABLE_DEFINITION:
@@ -169,10 +168,11 @@ static void gen_node(AstNode *node) {
         // evaluate right-side value first
         gen_node(node->as.assign.value);
 
+        // TODO
         // int to float expansion
-        if (node->as.assign.value->type == TYPE_INT && node->type == TYPE_DOUBLE) {
-            printf("INT2FLOATS\n");
-        }
+        // if (node->as.assign.value->type == TYPE_INT && node->type == TYPE_DOUBLE) {
+        //     printf("INT2FLOATS\n");
+        // }
 
         // assign right-side value from data stack
         printf("POPS LF@%s$%u\n", node->as.assign.name, node->var_id);
@@ -408,8 +408,8 @@ static void gen_node(AstNode *node) {
 
         printf("CREATEFRAME\n");
 
-        func = stab_find_func(st, node->as.call.name, NULL);
-        assert(func != NULL);
+        stab_func *callee = stab_find_func(st, node->as.call.name, NULL);
+        assert(callee != NULL);
 
         // eval all args first
         for (size_t i = 0; i < node->as.call.args.count; i++) {
@@ -420,7 +420,7 @@ static void gen_node(AstNode *node) {
 
             // TODO: uses undocumented feature where params always start at 0
             // int to float expansion
-            DataType param_type = func->is_builtin ? func->param_lists[0].params[i].type : func->locals[i]->type;
+            DataType param_type = callee->is_builtin ? callee->param_lists[0].params[i].type : callee->locals[i]->type;
             if (arg->type == TYPE_INT && param_type == TYPE_DOUBLE) {
                 printf("INT2FLOATS\n");
             }
@@ -431,12 +431,12 @@ static void gen_node(AstNode *node) {
         printf("CREATEFRAME\n");
         for (int i = node->as.call.args.count - 1; i >= 0; i--) {
             // def param and assign value
-            if (func->is_builtin) {
-                printf("DEFVAR TF@%s\n", func->param_lists[0].params[i].name);
-                printf("POPS TF@%s\n", func->param_lists[0].params[i].name);
+            if (callee->is_builtin) {
+                printf("DEFVAR TF@%s\n", callee->param_lists[0].params[i].name);
+                printf("POPS TF@%s\n", callee->param_lists[0].params[i].name);
             } else {
-                printf("DEFVAR TF@%s$%u\n", func->locals[i]->name, func->locals[i]->id);
-                printf("POPS TF@%s$%u\n", func->locals[i]->name, func->locals[i]->id);
+                printf("DEFVAR TF@%s$%u\n", callee->locals[i]->name, callee->locals[i]->id);
+                printf("POPS TF@%s$%u\n", callee->locals[i]->name, callee->locals[i]->id);
             }
         }
 
