@@ -8,6 +8,7 @@
  */
 
 #include "semantic.h"
+#include "ast.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -323,23 +324,26 @@ static sem_res_t check_call(AstNode *node) {
     return SEM_OK;
 }
 
+static sem_res_t check_ident(AstNode *node) {
+    stab_var *v = stab_find_var(sem_st, node->as.identifier.name);
+    if (!v) {
+        return error(SEM_UNDEFINED, node->line, "undefined variable");
+    }
+
+    node->type = v->type;
+    node->var_id = v->id;
+
+    return SEM_OK;
+}
+
 static sem_res_t check_expr(AstNode *node) {
     switch (node->node_kind) {
     case AST_LITERAL:
         // no need to check
         return SEM_OK;
 
-    case AST_IDENTIFIER: {
-        stab_var *v = stab_find_var(sem_st, node->as.identifier.name);
-        if (!v) {
-            return error(SEM_UNDEFINED, node->line, "undefined variable");
-        }
-
-        node->type = v->type;
-        node->var_id = v->id;
-
-        return SEM_OK;
-    }
+    case AST_IDENTIFIER:
+        return check_ident(node);
 
     case AST_UNARY_OPERATOR:
         return check_unary(node);
@@ -459,6 +463,41 @@ static sem_res_t check_return(AstNode *node) {
     return SEM_OK;
 }
 
+static sem_res_t check_expression_statement(AstNode *node) {
+    sem_res_t res = check_expr(node->as.expression_statement.expression);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    node->type = node->as.expression_statement.expression->type;
+
+    return SEM_OK;
+}
+
+static sem_res_t check_if(AstNode *node) {
+    sem_res_t res = check_cond(node->as.if_statement.condition);
+    if (res != SEM_OK) {
+        return res;
+    }
+    res = check_block(node->as.if_statement.then_block);
+    if (res != SEM_OK) {
+        return res;
+    }
+    // else if is stored as else block with nested if
+    if (node->as.if_statement.else_block) {
+        return check_block(node->as.if_statement.else_block);
+    }
+    return SEM_OK;
+}
+
+static sem_res_t check_while(AstNode *node) {
+    sem_res_t res = check_cond(node->as.while_statement.condition);
+    if (res != SEM_OK) {
+        return res;
+    }
+    return check_block(node->as.while_statement.block);
+}
+
 static sem_res_t check_statement(AstNode *node) {
     sem_res_t res;
 
@@ -476,36 +515,13 @@ static sem_res_t check_statement(AstNode *node) {
         return check_return(node);
 
     case AST_EXPRESSION_STATEMENT:
-        res = check_expr(node->as.expression_statement.expression);
-        if (res != SEM_OK) {
-            return res;
-        }
-
-        node->type = node->as.expression_statement.expression->type;
-
-        return SEM_OK;
+        return check_expression_statement(node);
 
     case AST_IF:
-        res = check_cond(node->as.if_statement.condition);
-        if (res != SEM_OK) {
-            return res;
-        }
-        res = check_block(node->as.if_statement.then_block);
-        if (res != SEM_OK) {
-            return res;
-        }
-        // else if is stored as else block with nested if
-        if (node->as.if_statement.else_block) {
-            return check_block(node->as.if_statement.else_block);
-        }
-        return SEM_OK;
+        return check_if(node);
 
     case AST_WHILE:
-        res = check_cond(node->as.while_statement.condition);
-        if (res != SEM_OK) {
-            return res;
-        }
-        return check_block(node->as.while_statement.block);
+        return check_while(node);
 
     default:
         return error(SEM_INTERNAL, node->line, "unexpected node in block");
