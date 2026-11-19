@@ -25,6 +25,10 @@ static bool is_assignable(DataType target, DataType src) {
     return target == TYPE_DOUBLE && src == TYPE_INT;
 }
 
+static bool is_explicit_unit(const stab_func *fn) {
+    return fn->ret_explicit && fn->ret_type == TYPE_UNIT;
+}
+
 // prints error message to stderr and returns sem. error code
 static sem_res_t error(sem_res_t code, unsigned int line, const char *msg) {
     fprintf(stderr, "Semantic error (%d)", code);
@@ -426,6 +430,35 @@ static sem_res_t check_cond(AstNode *cond) {
     return SEM_OK;
 }
 
+static sem_res_t check_return(AstNode *node) {
+    const stab_func *fn = stab_current_func(sem_st);
+    AstNode *value = node->as.return_statement.value;
+
+    if (!value) {
+        if (!is_explicit_unit(fn)) {
+            return error(SEM_OTHER, node->line, "return without value is allowed only in Unit function");
+        }
+
+        return SEM_OK;
+    }
+
+    if (!fn->ret_explicit) {
+        return error(SEM_TYPE, node->line, "function with return must have explicit return type");
+    }
+
+    sem_res_t res = check_expr(value);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    if (!is_explicit_unit(fn) && !is_assignable(fn->ret_type, value->type)) {
+        return error(SEM_TYPE, node->line, "incompatible return value");
+    }
+
+    node->type = value->type;
+    return SEM_OK;
+}
+
 static sem_res_t check_statement(AstNode *node) {
     sem_res_t res;
 
@@ -440,16 +473,7 @@ static sem_res_t check_statement(AstNode *node) {
         return check_assign(node);
 
     case AST_RETURN:
-        if (node->as.return_statement.value) {
-            res = check_expr(node->as.return_statement.value);
-            if (res != SEM_OK) {
-                return res;
-            }
-
-            node->type = node->as.return_statement.value->type;
-        }
-
-        return SEM_OK;
+        return check_return(node);
 
     case AST_EXPRESSION_STATEMENT:
         res = check_expr(node->as.expression_statement.expression);
