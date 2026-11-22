@@ -139,7 +139,6 @@ static void gen_node(AstNode *node) {
 
         // else block
         printf("LABEL else$%u\n", if_save);
-        // TODO: check syn./sem. analysis
         if (node->as.if_statement.else_block != NULL) {
             gen_node(node->as.if_statement.else_block);
         }
@@ -168,11 +167,14 @@ static void gen_node(AstNode *node) {
         // evaluate right-side value first
         gen_node(node->as.assign.value);
 
-        // TODO
+        // get var type to which is assigning
+        assert(node->var_id < current_func->locals_count);
+        const stab_var *var = current_func->locals[node->var_id];
+
         // int to float expansion
-        // if (node->as.assign.value->type == TYPE_INT && node->type == TYPE_DOUBLE) {
-        //     printf("INT2FLOATS\n");
-        // }
+        if (node->as.assign.value->type == TYPE_INT && var->type == TYPE_DOUBLE) {
+            printf("INT2FLOATS\n");
+        }
 
         // assign right-side value from data stack
         printf("POPS LF@%s$%u\n", node->as.assign.name, node->var_id);
@@ -188,11 +190,10 @@ static void gen_node(AstNode *node) {
             printf("PUSHS nil@nil\n");
         }
 
-        // TODO
         // int to float expansion
-        // if (node->as.return_statement.value->type == TYPE_INT && node->type == TYPE_DOUBLE) {
-        //     printf("INT2FLOATS\n");
-        // }
+        if (node->as.return_statement.value->type == TYPE_INT && current_func->ret_type == TYPE_DOUBLE) {
+            printf("INT2FLOATS\n");
+        }
 
         printf("RETURN\n");
 
