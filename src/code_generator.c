@@ -405,12 +405,15 @@ static void gen_node(AstNode *node) {
         }
 
         break;
-    case AST_CALL:
-
-        printf("CREATEFRAME\n");
-
+    case AST_CALL: {
+        // get the called func
         stab_func *callee = stab_find_func(st, node->as.call.name, NULL);
         assert(callee != NULL);
+
+        // get current param list
+        stab_size_t param_idx = 0;
+        stab_size_t param_list_idx = 0;
+        stab_param_list *param_list = &callee->param_lists[0];
 
         // eval all args first
         for (size_t i = 0; i < node->as.call.args.count; i++) {
@@ -419,25 +422,42 @@ static void gen_node(AstNode *node) {
             // eval arg
             gen_node(arg);
 
-            // TODO: uses undocumented feature where params always start at 0
+            // get current param list and param idx
+            while (param_idx == param_list->count) {
+                param_list_idx++;
+                assert(param_list_idx < callee->list_count);
+                param_idx = 0;
+                param_list = &callee->param_lists[param_list_idx];
+            }
+
             // int to float expansion
-            DataType param_type = callee->is_builtin ? callee->param_lists[0].params[i].type : callee->locals[i]->type;
-            if (arg->type == TYPE_INT && param_type == TYPE_DOUBLE) {
+            if (arg->type == TYPE_INT && param_list->params[param_idx].type == TYPE_DOUBLE) {
                 printf("INT2FLOATS\n");
             }
+
+            param_idx++;
         }
 
-        // TODO: uses undocumented feature where params always start at 0
         // put the arg values inside temp frame
+        // go from the back of the arg list and pop values from stack into the arg vars
         printf("CREATEFRAME\n");
-        for (int i = node->as.call.args.count - 1; i >= 0; i--) {
+        for (size_t i = 0; i < node->as.call.args.count; i++) {
+            // get current param list and param idx
+            while (param_idx == 0) {
+                assert(param_list_idx > 0);
+                param_list_idx--;
+                param_list = &callee->param_lists[param_list_idx];
+                param_idx = param_list->count;
+            }
+            const stab_param *param = &param_list->params[--param_idx];
+
             // def param and assign value
             if (callee->is_builtin) {
-                printf("DEFVAR TF@%s\n", callee->param_lists[0].params[i].name);
-                printf("POPS TF@%s\n", callee->param_lists[0].params[i].name);
+                printf("DEFVAR TF@%s\n", param->name);
+                printf("POPS TF@%s\n", param->name);
             } else {
-                printf("DEFVAR TF@%s$%u\n", callee->locals[i]->name, callee->locals[i]->id);
-                printf("POPS TF@%s$%u\n", callee->locals[i]->name, callee->locals[i]->id);
+                printf("DEFVAR TF@%s$%u\n", param->name, param->id);
+                printf("POPS TF@%s$%u\n", param->name, param->id);
             }
         }
 
@@ -446,6 +466,7 @@ static void gen_node(AstNode *node) {
         printf("POPFRAME\n");
 
         break;
+    }
     }
 }
 
