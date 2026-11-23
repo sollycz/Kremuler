@@ -103,13 +103,6 @@ static void gen_node(AstNode *node) {
             }
             printf("RETURN\n");
         }
-
-        break;
-    case AST_PARAMETER:
-
-        // should never run
-        assert(false);
-
         break;
     case AST_BLOCK:
 
@@ -505,6 +498,10 @@ static void gen_node(AstNode *node) {
         printf("CALL %s\n", node->as.call.name);
         printf("POPFRAME\n");
 
+        break;
+    default:
+        // should never run
+        assert(false);
         break;
     }
 }
