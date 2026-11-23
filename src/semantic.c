@@ -181,7 +181,7 @@ static sem_res_t declare_params(AstNode *fn, stab_func *f) {
         AstNode *param = params->items[i];
 
         stab_res_t res;
-        stab_var *v = stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res);
+        stab_var *v = stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res, true);
         if (!v) {
             if (res == ST_REDEFINED) {
                 return error(SEM_REDEFINED, param->line, "duplicate parameter name");
@@ -401,7 +401,8 @@ static sem_res_t check_var_def(AstNode *node) {
                                    node->as.variable_definition.name,
                                    type,
                                    node->as.variable_definition.is_mutable,
-                                   &st_res);
+                                   &st_res,
+                                   false);
     if (!v) {
         if (st_res == ST_REDEFINED) {
             return error(SEM_REDEFINED, node->line, "redefinition of variable");
