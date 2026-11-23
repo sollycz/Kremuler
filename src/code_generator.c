@@ -104,7 +104,7 @@ static void gen_node(AstNode *node) {
             printf("RETURN\n");
         }
         break;
-    case AST_BLOCK:
+    case AST_BLOCK: {
 
         // is this the lowest scope in a func?
         bool direct_func_block_local = direct_func_block;
@@ -124,7 +124,8 @@ static void gen_node(AstNode *node) {
         }
 
         break;
-    case AST_WHILE:
+    }
+    case AST_WHILE: {
 
         unsigned int while_save = while_counter++;
 
@@ -143,7 +144,8 @@ static void gen_node(AstNode *node) {
         printf("LABEL while$end$%u\n", while_save);
 
         break;
-    case AST_IF:
+    }
+    case AST_IF: {
 
         unsigned int if_save = if_counter++;
 
@@ -164,6 +166,7 @@ static void gen_node(AstNode *node) {
         printf("LABEL if$%u\n", if_save);
 
         break;
+    }
     case AST_VARIABLE_DEFINITION:
 
         // evaluate right-side value first
@@ -273,7 +276,7 @@ static void gen_node(AstNode *node) {
         printf("PUSHS LF@%s$%u\n", node->as.identifier.name, node->var_id);
 
         break;
-    case AST_UNARY_OPERATOR:
+    case AST_UNARY_OPERATOR: {
 
         AstNode *op = node->as.unary.operand;
         switch (node->as.unary.operator_type) {
@@ -309,7 +312,8 @@ static void gen_node(AstNode *node) {
         }
 
         break;
-    case AST_BINARY_OPERATOR:
+    }
+    case AST_BINARY_OPERATOR: {
 
         AstNode *l = node->as.binary.left;
         AstNode *r = node->as.binary.right;
@@ -438,7 +442,9 @@ static void gen_node(AstNode *node) {
         }
 
         break;
-    case AST_CALL:
+    }
+    case AST_CALL: {
+
         // get the called func
         stab_func *callee = stab_find_func(st, node->as.call.name, NULL);
         assert(callee != NULL);
@@ -499,6 +505,7 @@ static void gen_node(AstNode *node) {
         printf("POPFRAME\n");
 
         break;
+    }
     default:
         // should never run
         assert(false);
