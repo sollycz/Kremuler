@@ -278,16 +278,3 @@ htab_size_t htab_size(const htab *ht) {
     assert(ht != NULL);
     return ht->size;
 }
-
-void htab_foreach(const htab *ht, htab_foreach_fn fn, void *ctx) {
-    assert(ht != NULL);
-    assert(fn != NULL);
-
-    htab_slot_t *slot;
-    for (htab_size_t i = 0; i < ht->capacity; i++) {
-        slot = &ht->slots[i];
-        if (slot->state == SLOT_USED) {
-            fn(slot->key, slot->value, ctx);
-        }
-    }
-}

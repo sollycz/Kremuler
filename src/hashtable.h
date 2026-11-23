@@ -18,7 +18,6 @@ typedef unsigned long htab_size_t;
 
 typedef htab_size_t (*htab_hash_fn)(htab_key_t key);
 typedef bool (*htab_eq_fn)(htab_key_t a, htab_key_t b);
-typedef void (*htab_foreach_fn)(htab_key_t key, htab_value_t value, void *ctx);
 
 // this can be NULL, depends on who owns the values (caller or the table).
 typedef void (*htab_free_fn)(void *ptr);
@@ -55,9 +54,5 @@ bool htab_remove(htab *ht, htab_key_t key);
 // returns the size of table (number of entries).
 // ht cannot be NULL.
 htab_size_t htab_size(const htab *ht);
-
-// runs foreach_fn for every entry in the table.
-// ht and fn cannot be NULL.
-void htab_foreach(const htab *ht, htab_foreach_fn fn, void *ctx);
 
 #endif // HASHTABLE_H

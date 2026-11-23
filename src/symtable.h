@@ -17,8 +17,6 @@ typedef unsigned long stab_size_t;
 
 typedef struct stab_func stab_func;
 
-typedef void (*stab_foreach_fn)(stab_func *fn, void *ctx);
-
 typedef enum {
     ST_OK,
     ST_REDEFINED, // defined twice - error 4
@@ -141,16 +139,8 @@ stab_func *stab_current_func(const stab *st);
 // specific reason for failure can be found in *res
 stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res, bool is_param);
 
-// creates new temporary var, used for for while if else etc., returns the var or null
-// this variable is only found in function.locals
-stab_var *stab_create_temp_var(stab *st, DataType type);
-
 // finds var by name, otherwise null
 // searches from current scope outwards while staying inside of the current function
 stab_var *stab_find_var(const stab *st, const char *name);
-
-// runs stab_foreach_fn for every function / method
-// st and fn cannot be null
-void stab_foreach_func(const stab *st, stab_foreach_fn fn, void *ctx);
 
 #endif // SYMTABLE_H

@@ -476,9 +476,8 @@ static stab_var *add_local(stab_func *f, const char *name, DataType type, bool i
         return NULL;
     }
 
-    // name can be null for temp var
     v->name = str_copy(name);
-    if (name && !v->name) {
+    if (!v->name) {
         free(v);
         return NULL;
     }
@@ -530,11 +529,6 @@ stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mu
     return NULL;
 }
 
-stab_var *stab_create_temp_var(stab *st, DataType type) {
-    assert(st != NULL && st->current_scope != NULL && st->current_scope->func != NULL);
-    return add_local(st->current_scope->func, NULL, type, true, false);
-}
-
 stab_var *stab_find_var(const stab *st, const char *name) {
     assert(st != NULL);
     for (const scope *s = st->current_scope; s != NULL && s->func == st->current_scope->func; s = s->parent) {
@@ -568,23 +562,4 @@ stab_func *stab_find_func(const stab *st, const char *name, const DataType *exte
     }
 
     return NULL;
-}
-
-// adapting struct for typedef used by symtable and hashtable
-typedef struct {
-    stab_foreach_fn fn;
-    void *ctx;
-} foreach_convert;
-
-// adapting function for typedef used by symtable and hashtable
-static void convert_foreach_fn(htab_key_t key, htab_value_t value, void *ctx) {
-    (void)key;
-    const foreach_convert *a = ctx;
-    a->fn(value, a->ctx);
-}
-
-void stab_foreach_func(const stab *st, stab_foreach_fn fn, void *ctx) {
-    assert(st != NULL && fn != NULL);
-    foreach_convert a = {.fn = fn, .ctx = ctx};
-    htab_foreach(st->funcs, convert_foreach_fn, &a);
 }
