@@ -20,6 +20,8 @@ static stab_func *current_func;
 static unsigned int if_counter;
 static unsigned int while_counter;
 
+static bool direct_func_block;
+
 void generate_code(AstNode *ast, stab *stab) {
     assert(ast != NULL && ast->node_kind == AST_PROGRAM);
     assert(stab != NULL && stab_main(stab));
@@ -82,15 +84,24 @@ static void gen_node(AstNode *node) {
             printf("DEFVAR LF@%s$%u\n", current_func->locals[i]->name, current_func->locals[i]->id);
         }
 
+        direct_func_block = true;
         gen_node(node->as.function.block);
 
         // add return in the final statement if only implicit
         AstNodeList *statements = &node->as.function.block->as.block.statements;
         AstNode *last = statements->items[statements->count - 1];
-        if (last->node_kind != AST_EXPRESSION_STATEMENT) {
-            printf("PUSHS nil@nil\n");
+        if (last->node_kind != AST_RETURN) {
+            // ret_type == UNIT funcs always return nil
+            if (current_func->ret_type == TYPE_UNIT) {
+                printf("PUSHS nil@nil\n");
+            } else if (last->node_kind == AST_EXPRESSION_STATEMENT &&
+                       last->as.expression_statement.expression->type == TYPE_INT &&
+                       current_func->ret_type == TYPE_DOUBLE) {
+                // int to float expansion of implicit return value
+                printf("INT2FLOATS\n");
+            }
+            printf("RETURN\n");
         }
-        printf("RETURN\n");
 
         break;
     case AST_PARAMETER:
@@ -101,9 +112,21 @@ static void gen_node(AstNode *node) {
         break;
     case AST_BLOCK:
 
+        // is this the lowest scope in a func?
+        bool direct_func_block_local = direct_func_block;
+        direct_func_block = false;
+
         // gen all statements sequentially
         for (size_t i = 0; i < node->as.block.statements.count; i++) {
             gen_node(node->as.block.statements.items[i]);
+
+            // check if returned value from the line should be popped
+            // ALL ret_type == UNIT funcs and non-last expressions that return a value on stack, that won't be used
+            if (node->as.block.statements.items[i]->node_kind == AST_EXPRESSION_STATEMENT &&
+                (current_func->ret_type == TYPE_UNIT || !direct_func_block_local ||
+                 i != node->as.block.statements.count - 1)) {
+                printf("POPS GF@tmp1\n");
+            }
         }
 
         break;
@@ -186,14 +209,19 @@ static void gen_node(AstNode *node) {
         // eval return value
         if (node->as.return_statement.value != NULL) {
             gen_node(node->as.return_statement.value);
-        } else {
-            // () - return Unit literal
-            printf("PUSHS nil@nil\n");
-        }
 
-        // int to float expansion
-        if (node->as.return_statement.value->type == TYPE_INT && current_func->ret_type == TYPE_DOUBLE) {
-            printf("INT2FLOATS\n");
+            // always pop on ret_type == UNIT funcs
+            if (current_func->ret_type == TYPE_UNIT) {
+                printf("POPS GF@tmp1\n");
+                printf("PUSHS nil@nil\n");
+            } else {
+                // int to float expansion
+                if (node->as.return_statement.value->type == TYPE_INT && current_func->ret_type == TYPE_DOUBLE) {
+                    printf("INT2FLOATS\n");
+                }
+            }
+        } else {
+            printf("PUSHS nil@nil\n");
         }
 
         printf("RETURN\n");
@@ -238,6 +266,8 @@ static void gen_node(AstNode *node) {
         case TYPE_BOOL:
             printf("bool@%s", node->as.literal.value.int_val ? "true" : "false");
             break;
+        default:
+            assert(false);
         }
 
         printf("\n");
@@ -280,6 +310,8 @@ static void gen_node(AstNode *node) {
             printf("NOTS\n");
 
             break;
+        default:
+            assert(false);
         }
 
         break;
@@ -300,18 +332,22 @@ static void gen_node(AstNode *node) {
         case OP_LE:
         case OP_GT:
         case OP_GE:
-            assert((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE) ||
-                   (l->type == TYPE_STRING && r->type == TYPE_STRING));
+            assert(
+                ((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE)) ||
+                (l->type == TYPE_STRING && r->type == TYPE_STRING));
             break;
         case OP_EQ:
         case OP_NE:
-            assert((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE) ||
-                   l->type == r->type);
+            assert(
+                ((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE)) ||
+                l->type == r->type);
             break;
         case OP_AND:
         case OP_OR:
             assert(l->type == TYPE_BOOL && r->type == TYPE_BOOL);
             break;
+        default:
+            assert(false);
         }
 
         // eval left op
@@ -403,10 +439,12 @@ static void gen_node(AstNode *node) {
         case OP_OR:
             printf("ORS\n");
             break;
+        default:
+            assert(false);
         }
 
         break;
-    case AST_CALL: {
+    case AST_CALL:
         // get the called func
         stab_func *callee = stab_find_func(st, node->as.call.name, NULL);
         assert(callee != NULL);
@@ -467,7 +505,6 @@ static void gen_node(AstNode *node) {
         printf("POPFRAME\n");
 
         break;
-    }
     }
 }
 
