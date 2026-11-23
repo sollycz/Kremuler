@@ -77,11 +77,12 @@ static void gen_node(AstNode *node) {
         current_func = stab_find_func(st, node->as.function.name, NULL);
         assert(current_func != NULL);
 
-        // TODO: uses undocumented feature where params always start at 0
         // gen DEFVARs for locals throughout the whole func
-        for (size_t i = node->as.function.parameters.count; i < current_func->locals_count; i++) {
-            // local frame: var_name$autoinc_id
-            printf("DEFVAR LF@%s$%u\n", current_func->locals[i]->name, current_func->locals[i]->id);
+        for (size_t i = 0; i < current_func->locals_count; i++) {
+            if (!current_func->locals[i]->is_param) {
+                // local frame: var_name$autoinc_id
+                printf("DEFVAR LF@%s$%u\n", current_func->locals[i]->name, current_func->locals[i]->id);
+            }
         }
 
         direct_func_block = true;
