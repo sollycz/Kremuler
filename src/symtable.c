@@ -568,22 +568,3 @@ stab_func *stab_find_func(const stab *st, const char *name, const DataType *exte
 
     return NULL;
 }
-
-// adapting struct for typedef used by symtable and hashtable
-typedef struct {
-    stab_foreach_fn fn;
-    void *ctx;
-} foreach_convert;
-
-// adapting function for typedef used by symtable and hashtable
-static void convert_foreach_fn(htab_key_t key, htab_value_t value, void *ctx) {
-    (void)key;
-    const foreach_convert *a = ctx;
-    a->fn(value, a->ctx);
-}
-
-void stab_foreach_func(const stab *st, stab_foreach_fn fn, void *ctx) {
-    assert(st != NULL && fn != NULL);
-    foreach_convert a = {.fn = fn, .ctx = ctx};
-    htab_foreach(st->funcs, convert_foreach_fn, &a);
-}
