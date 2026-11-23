@@ -7,6 +7,7 @@
 #include "ast.h"
 #include "symtable.h"
 #include <assert.h>
+#include <inttypes.h>
 #include <stdio.h>
 
 void generate_code(AstNode *ast, stab *stab);
@@ -211,7 +212,7 @@ static void gen_node(AstNode *node) {
 
         switch (node->type) {
         case TYPE_INT:
-            printf("int@%ld", node->as.literal.value.int_val);
+            printf("int@%" PRId64, node->as.literal.value.int_val);
             break;
         case TYPE_DOUBLE:
             printf("float@%a", node->as.literal.value.double_val);
