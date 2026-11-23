@@ -476,9 +476,8 @@ static stab_var *add_local(stab_func *f, const char *name, DataType type, bool i
         return NULL;
     }
 
-    // name can be null for temp var
     v->name = str_copy(name);
-    if (name && !v->name) {
+    if (!v->name) {
         free(v);
         return NULL;
     }
@@ -527,11 +526,6 @@ stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mu
     free(v);
     *res = ST_NOMEM;
     return NULL;
-}
-
-stab_var *stab_create_temp_var(stab *st, DataType type) {
-    assert(st != NULL && st->current_scope != NULL && st->current_scope->func != NULL);
-    return add_local(st->current_scope->func, NULL, type, true);
 }
 
 stab_var *stab_find_var(const stab *st, const char *name) {
