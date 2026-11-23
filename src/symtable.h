@@ -47,6 +47,7 @@ typedef struct {
     DataType type;
     bool is_mutable; // error 7
     unsigned id;
+    bool is_param;
 } stab_var;
 
 typedef enum { INFER_NONE, INFER_RUNNING, INFER_DONE } stab_infer_t;
@@ -136,7 +137,7 @@ stab_func *stab_current_func(const stab *st);
 
 // declares var in current scope
 // specific reason for failure can be found in *res
-stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res);
+stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res, bool is_param);
 
 // finds var by name, otherwise null
 // searches from current scope outwards while staying inside of the current function

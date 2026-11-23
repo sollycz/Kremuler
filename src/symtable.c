@@ -470,7 +470,7 @@ stab_func *stab_current_func(const stab *st) {
 }
 
 // allocates variable and adds it to function.locals
-static stab_var *add_local(stab_func *f, const char *name, DataType type, bool is_mutable) {
+static stab_var *add_local(stab_func *f, const char *name, DataType type, bool is_mutable, bool is_param) {
     stab_var *v = malloc(sizeof *v);
     if (!v) {
         return NULL;
@@ -484,6 +484,7 @@ static stab_var *add_local(stab_func *f, const char *name, DataType type, bool i
 
     v->type = type;
     v->is_mutable = is_mutable;
+    v->is_param = is_param;
     v->id = f->locals_count;
 
     stab_var **tmp = realloc(f->locals, (f->locals_count + 1) * sizeof *tmp);
@@ -498,7 +499,7 @@ static stab_var *add_local(stab_func *f, const char *name, DataType type, bool i
     return v;
 }
 
-stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res) {
+stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res, bool is_param) {
     assert(st != NULL && st->current_scope != NULL && st->current_scope->func != NULL);
 
     stab_func *f = st->current_scope->func;
@@ -508,7 +509,7 @@ stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mu
         return NULL;
     }
 
-    stab_var *v = add_local(f, name, type, is_mutable);
+    stab_var *v = add_local(f, name, type, is_mutable, is_param);
     if (!v) {
         *res = ST_NOMEM;
         return NULL;
