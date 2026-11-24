@@ -21,7 +21,8 @@ typedef enum AstKind {
     AST_BLOCK,
     /** ((statements)) */
     AST_WHILE,
-    AST_IF,
+    AST_FOR, // CONTROL
+    AST_IF,  // also used as an expression (CONTROL)
     AST_VARIABLE_DEFINITION,
     AST_ASSIGN,
     AST_RETURN,
@@ -78,9 +79,12 @@ struct AstNode {
 
         struct {
             char *name;
-            AstNodeList parameters;
+            AstNodeList parameters; // all parameters from all lists, flattened
+            size_t *list_sizes;
+            size_t list_count;
             DataType return_type; // also TYPE_UNKNOWN if not explicitly written
             AstNode *block;
+            AstNode *receiver; // AST_PARAMETER of the extended value, NULL for a normal function (EXTKW)
             bool is_main_func;
         } function;
 
@@ -97,6 +101,16 @@ struct AstNode {
             AstNode *condition;
             AstNode *block;
         } while_statement;
+
+        struct {
+            char *var_name;
+            AstNode *from;
+            AstNode *to;
+            AstNode *step;      // NULL if "by" is missing
+            bool inclusive;     // "to" = true, "until" = false
+            AstNodeList guards; // conditions of "if" guards, may be empty
+            AstNode *block;
+        } for_statement;
 
         struct {
             AstNode *condition;
@@ -150,6 +164,9 @@ struct AstNode {
         struct {
             char *name;
             AstNodeList args;
+            size_t *arg_list_sizes;
+            size_t arg_list_count;
+            bool is_member;
         } call;
     } as;
 };
