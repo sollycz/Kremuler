@@ -166,7 +166,7 @@ static sem_res_t build_param_lists(const AstNode *function, stab_param_list **ou
 static sem_res_t declare_function(AstNode *fn) {
     assert(fn->node_kind == AST_FUNCTION);
 
-    // allocate param_list
+    // allocate param_lists
     stab_param_list *lists;
     size_t list_count;
     sem_res_t res = build_param_lists(fn, &lists, &list_count);
@@ -184,10 +184,19 @@ static sem_res_t declare_function(AstNode *fn) {
     }
 
     stab_res_t st_res;
-    // list_count = 1 -> single parameter list
-    // only the PARAMLISTS extension allow multiple param_lists
+
+    const AstNode *receiver = fn->as.function.receiver;
+    stab_param extends_param;
+    const stab_param *extends = NULL;
+    if (receiver != NULL) {
+        extends_param.name = receiver->as.parameter.name;
+        extends_param.type = receiver->as.parameter.type;
+        // assigned later in second pass
+        extends_param.id = 0;
+        extends = &extends_param;
+    }
     stab_func *f =
-        stab_add_func(sem_st, fn->as.function.name, lists, list_count, ret_type, ret_explicit, NULL, &st_res);
+        stab_add_func(sem_st, fn->as.function.name, lists, list_count, ret_type, ret_explicit, extends, &st_res);
     // now lives in stab, we can safely free it
     free_param_lists(lists, list_count);
 
@@ -249,6 +258,15 @@ static sem_res_t check_unary(AstNode *node) {
     sem_res_t res = check_expr(operand);
     if (res != SEM_OK) {
         return res;
+    }
+
+    // logical negation
+    if (node->as.unary.operator_type == OP_NOT) {
+        if (operand->type != TYPE_BOOL) {
+            return error(SEM_TYPE, node->line, "operator ! requires Boolean");
+        }
+        node->type = TYPE_BOOL;
+        return SEM_OK;
     }
 
     // operand must be a number
@@ -334,8 +352,18 @@ static sem_res_t check_binary(AstNode *node) {
 
         return SEM_OK;
 
+    case OP_AND:
+    case OP_OR:
+        // logical operators for BOOLTHEN
+        if (l != TYPE_BOOL || r != TYPE_BOOL) {
+            return error(SEM_TYPE, node->line, "logical operator requires two Booleans");
+        }
+
+        node->type = TYPE_BOOL;
+
+        return SEM_OK;
+
     default:
-        // rest is boolthen, not supported for now
         return error(SEM_INTERNAL, node->line, "unsupported operator");
     }
 }
