@@ -19,6 +19,7 @@ static stab_func *current_func;
 
 static unsigned int if_counter;
 static unsigned int while_counter;
+static unsigned int skip_counter;
 
 static bool direct_func_block;
 
@@ -358,6 +359,22 @@ static void gen_node(AstNode *node) {
             expanded = true;
         }
 
+        // short circuit for OR: true || (don't eval)
+        unsigned int skip_save = skip_counter++;
+        if (node->as.binary.operator_type == OP_OR) {
+            printf("PUSHS bool@true\n"
+                   "JUMPIFEQS $skip$%u\n"
+                   "PUSHS bool@false\n",
+                   skip_save);
+        }
+        // short circuit for AND: false && (don't eval)
+        else if (node->as.binary.operator_type == OP_AND) {
+            printf("PUSHS bool@false\n"
+                   "JUMPIFEQS $skip$%u\n"
+                   "PUSHS bool@true\n",
+                   skip_save);
+        }
+
         // eval right op
         gen_node(r);
 
@@ -439,6 +456,26 @@ static void gen_node(AstNode *node) {
             break;
         default:
             assert(false);
+        }
+
+        // gen label for short-circuit ops
+        // non-short-circuited result is already on the stack, jump over the constant push
+        if (node->as.binary.operator_type == OP_OR) {
+            printf("JUMP $skip$end$%u\n"
+                   "LABEL $skip$%u\n"
+                   "PUSHS bool@true\n"
+                   "LABEL $skip$end$%u\n",
+                   skip_save,
+                   skip_save,
+                   skip_save);
+        } else if (node->as.binary.operator_type == OP_AND) {
+            printf("JUMP $skip$end$%u\n"
+                   "LABEL $skip$%u\n"
+                   "PUSHS bool@false\n"
+                   "LABEL $skip$end$%u\n",
+                   skip_save,
+                   skip_save,
+                   skip_save);
         }
 
         break;
@@ -578,6 +615,21 @@ static void gen_builtin_funcs(void) {
            0.0f);
     if_counter++;
 
+    // readBoolean(): Bool
+    printf("LABEL readBoolean\n"
+           "READ GF@tmp1 bool\n"
+
+           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n"
+
+           "LABEL else$%u\n"
+           "PUSHS bool@false\n"
+           "RETURN\n",
+           if_counter,
+           if_counter);
+    if_counter++;
+
     // toStr(value: Any): String
     printf("LABEL toStr\n"
            "TYPE GF@tmp1 LF@value\n"
@@ -600,6 +652,17 @@ static void gen_builtin_funcs(void) {
            "RETURN\n"
            "LABEL else$%u\n"
 
+           // bool
+           "JUMPIFNEQ else$%u GF@tmp1 string@bool\n"
+           "PUSHS bool@true\n"
+           "JUMPIFEQS else$%u\n"
+           "PUSHS string@false\n"
+           "RETURN\n"
+           "LABEL else$%u\n"
+           "PUSHS string@true\n"
+           "RETURN\n"
+           "LABEL else$%u\n"
+
            // nil
            "POPS GF@tmp2\n"
            "PUSHS string@()\n"
@@ -609,8 +672,12 @@ static void gen_builtin_funcs(void) {
            if_counter + 1,
            if_counter + 1,
            if_counter + 2,
-           if_counter + 2);
-    if_counter += 3;
+           if_counter + 2,
+           if_counter + 3,
+           if_counter + 4,
+           if_counter + 4,
+           if_counter + 3);
+    if_counter += 5;
 
     // toInt(value: Double): Int
     printf("LABEL toInt\n"
