@@ -3,8 +3,7 @@
  * @brief Implementation of Semantic analysis
  * @author Filip Radulovič (xradulf00)
  * @todo Add comments
- * @todo Rework check_block "double" declaration
- * @todo Same for check_expr and check_fn
+ * @todo Add support for PARAMLISTS in the first pass (waiting for ast)
  */
 
 #include "semantic.h"
@@ -60,26 +59,45 @@ static sem_res_t stab_res_convert(stab_res_t res) {
     }
 }
 
-// creates param list in the same format as stab needs
+// Checks that the main function has a valid signature.
+// Returns SEM_OK if signature valid, otherwise a semantic error code.
+static sem_res_t check_main_signature(const AstNode *function) {
+    // main function cannot have any parameters
+    if (function->as.function.parameters.count != 0) {
+        return error(SEM_BAD_CALL, function->line, "@main function cannot have parameters");
+    }
+
+    // main functions has to have Unit return type (or none specified)
+    DataType return_type = function->as.function.return_type;
+    if (return_type != TYPE_UNKNOWN && return_type != TYPE_UNIT) {
+        return error(SEM_TYPE, function->line, "@main function must return Unit");
+    }
+
+    return SEM_OK;
+}
+
+// Builds a parameter list for symtable from given function AST node.
+// Returns SEM_OK if sucessful, otherwise SEM_INTERNAL (memory allocation failed).
 static sem_res_t build_param_list(const AstNode *function, stab_param_list *out) {
-    const AstNodeList *ast_params = &function->as.function.parameters;
+    const AstNodeList *parameters = &function->as.function.parameters;
 
     out->params = NULL;
-    out->count = ast_params->count;
+    out->count = parameters->count;
 
-    // no need to check anything
-    if (ast_params->count == 0) {
+    // no parameters, nothing to allocate
+    if (parameters->count == 0) {
         return SEM_OK;
     }
 
-    // same structure use by stab
-    out->params = malloc(ast_params->count * sizeof(*out->params));
+    // allocate param_list
+    out->params = malloc(parameters->count * sizeof(*out->params));
     if (!out->params) {
         return SEM_INTERNAL;
     }
 
-    for (size_t i = 0; i < ast_params->count; i++) {
-        const AstNode *param = ast_params->items[i];
+    // copy name and type for every parameter
+    for (size_t i = 0; i < parameters->count; i++) {
+        const AstNode *param = parameters->items[i];
         assert(param->node_kind == AST_PARAMETER);
 
         out->params[i].name = param->as.parameter.name;
@@ -89,29 +107,17 @@ static sem_res_t build_param_list(const AstNode *function, stab_param_list *out)
     return SEM_OK;
 }
 
-static sem_res_t check_main_sig(const AstNode *fn) {
-    if (fn->as.function.parameters.count != 0) {
-        return error(SEM_BAD_CALL, fn->line, "@main function cannot have parameters");
-    }
-
-    DataType ret = fn->as.function.return_type;
-    if (ret != TYPE_UNKNOWN && ret != TYPE_UNIT) {
-        return error(SEM_TYPE, fn->line, "@main function must return Unit");
-    }
-
-    return SEM_OK;
-}
-
-static sem_res_t declare_fn(AstNode *fn) {
+static sem_res_t declare_function(AstNode *fn) {
     assert(fn->node_kind == AST_FUNCTION);
 
-    // malloc in build_param_list
+    // allocate param_list
     stab_param_list list;
     sem_res_t res = build_param_list(fn, &list);
     if (res != SEM_OK) {
         return res;
     }
 
+    // return type is explicit unless its UNKNOWN
     DataType ret_type = fn->as.function.return_type;
     bool ret_explicit;
     if (ret_type == TYPE_UNKNOWN) {
@@ -120,17 +126,18 @@ static sem_res_t declare_fn(AstNode *fn) {
         ret_explicit = true;
     }
 
-    stab_res_t res2;
-    // list_count = 1 -> without any addons (different number would be introduced by PARAMLISTS addon)
-    stab_func *f = stab_add_func(sem_st, fn->as.function.name, &list, 1, ret_type, ret_explicit, NULL, &res2);
+    stab_res_t st_res;
+    // list_count = 1 -> single parameter list
+    // only the PARAMLISTS extension allow multiple param_lists
+    stab_func *f = stab_add_func(sem_st, fn->as.function.name, &list, 1, ret_type, ret_explicit, NULL, &st_res);
     // now lives in stab, we can safely free it
     free(list.params);
 
     if (!f) {
-        if (res2 == ST_REDEFINED) {
+        if (st_res == ST_REDEFINED) {
             return error(SEM_REDEFINED, fn->line, "redefinition of function");
         }
-        return stab_res_convert(res2);
+        return stab_res_convert(st_res);
     }
 
     // second pass needs ast_node reference
@@ -138,7 +145,7 @@ static sem_res_t declare_fn(AstNode *fn) {
 
     if (fn->as.function.is_main_func) {
         // reusing res is safe here
-        res = check_main_sig(fn);
+        res = check_main_signature(fn);
         if (res != SEM_OK) {
             return res;
         }
@@ -151,23 +158,21 @@ static sem_res_t declare_fn(AstNode *fn) {
     return SEM_OK;
 }
 
-// first pass, collect all functions and variables
-static sem_res_t collect_fns(const AstNode *program) {
+// Collects and declares all functions and its parameters.
+// Returns SEM_OK if sucessful, otherwise error code from declare_function.
+static sem_res_t collect_all_functions(const AstNode *program) {
     assert(program->node_kind == AST_PROGRAM);
 
     const AstNodeList *functions = &program->as.program.functions;
-    size_t fns_len = functions->count;
 
-    for (size_t i = 0; i < fns_len; i++) {
-        sem_res_t res = declare_fn(functions->items[i]);
+    // declare every function
+    for (size_t i = 0; i < functions->count; i++) {
+        sem_res_t res = declare_function(functions->items[i]);
 
         if (res != SEM_OK) {
+            // calling error() is handled by declare_function
             return res;
         }
-    }
-
-    if (stab_main(sem_st) == NULL) {
-        return error(SEM_UNDEFINED, 0, "missing @main function");
     }
 
     return SEM_OK;
@@ -441,7 +446,7 @@ static sem_res_t check_assign(AstNode *node) {
     return SEM_OK;
 }
 
-// todo: not a great solution, rework
+// forward declarations
 static sem_res_t check_block(AstNode *block);
 
 static sem_res_t check_cond(AstNode *cond) {
@@ -733,9 +738,15 @@ void semantic_init(stab *st) {
 sem_res_t semantic_analyse(AstNode *program) {
     assert(sem_st != NULL && program != NULL);
 
-    sem_res_t res = collect_fns(program);
+    // first pass: collect all function signatures and declare them
+    sem_res_t res = collect_all_functions(program);
     if (res != SEM_OK) {
         return res;
+    }
+
+    // after first pass program must have valid main function
+    if (stab_main(sem_st) == NULL) {
+        return error(SEM_UNDEFINED, 0, "missing @main function");
     }
 
     return check_fns(program);
