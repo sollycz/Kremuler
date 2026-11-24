@@ -615,7 +615,8 @@ static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
         if (next == TOK_ASSIGN) {
             return parse_assign(p, out);
         }
-    } // fall through to an expression statement if its not an assignment
+    }
+    // fall through - not an assignment, so its an expresssion statement
     default:
         return parse_expression_statement(p, out);
     }
