@@ -859,7 +859,17 @@ static sem_res_t check_all_functions(const AstNode *program) {
     const AstNodeList *functions = &program->as.program.functions;
 
     for (size_t i = 0; i < functions->count; i++) {
-        stab_func *func = stab_find_func(sem_st, functions->items[i]->as.function.name, NULL);
+        const AstNode *ast = functions->items[i];
+
+        const AstNode *receiver = ast->as.function.receiver;
+        const DataType *extends = NULL;
+        if (receiver != NULL) {
+            extends = &receiver->as.parameter.type;
+        }
+
+        stab_func *func = stab_find_func(sem_st, ast->as.function.name, extends);
+        // every function was declared in the first pass
+        assert(func != NULL);
 
         // infer done, skip this function
         if (func->infer != INFER_NONE) {
