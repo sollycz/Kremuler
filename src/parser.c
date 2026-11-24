@@ -939,6 +939,9 @@ static ParseResult parse_extension_method(Parser *p, AstNodeList *functions, con
 }
 
 // parses an extension with one or more methods for one receiver (EXTKW)
+// <extension> -> TOK_KW_EXTENSION TOK_LEFT_PARENTHESIS <parameter> TOK_RIGHT_PARENTHESIS <extension_end>
+// <extension_end> -> TOK_EOL TOK_INDENT <extension_method_list> TOK_DEDENT | <function>
+// <extension_method_list> -> <function> <extension_method_list> | epsilon
 static ParseResult parse_extension(Parser *p, AstNodeList *functions) {
     ParseResult result;
 
@@ -997,11 +1000,19 @@ static ParseResult parse_extension(Parser *p, AstNodeList *functions) {
     return result;
 }
 
-// <functions> -> <function> <functions> | <function_main> <functions> | epsilon
+// <functions> -> <function> <functions> | <function_main> <functions> | <extension> <functions> | epsilon
 static ParseResult parse_functions(Parser *p, AstNodeList *functions) {
-    while (p->current.type == TOK_KW_DEF || p->current.type == TOK_AT) {
+    while (p->current.type == TOK_KW_DEF || p->current.type == TOK_AT || p->current.type == TOK_KW_EXTENSION) {
         AstNode *function = NULL;
         ParseResult result;
+
+        if (p->current.type == TOK_KW_EXTENSION) {
+            result = parse_extension(p, functions);
+            if (result != PARSE_OK) {
+                return result;
+            }
+            continue;
+        }
 
         if (p->current.type == TOK_KW_DEF) {
             result = parse_function(p, &function);
