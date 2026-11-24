@@ -2,8 +2,8 @@
  * @file semantic.c
  * @brief Implementation of Semantic analysis
  * @author Filip Radulovič (xradulf00)
- * @todo Add comments
  * @todo Add support for PARAMLISTS in the first pass (waiting for ast)
+ * @todo Add support for the rest of extensions
  */
 
 #include "semantic.h"
@@ -15,11 +15,13 @@
 // global symtable pointer
 static stab *sem_st = NULL;
 
+// stack like function checking chain for finding recursive cycles
 typedef struct fn_chain {
     const stab_func *fn;
     const struct fn_chain *prev;
 } fn_chain;
 
+// top of function checking chain
 static const fn_chain *checking = NULL;
 
 // Returns true if type is INT or DOUBLE.
@@ -35,7 +37,7 @@ static bool is_assignable(DataType target, DataType source) {
     return target == TYPE_DOUBLE && source == TYPE_INT;
 }
 
-// Returns whether fn has expicit return type TYPE_UNIT.
+// Returns whether fn has explicit return type TYPE_UNIT.
 static bool is_explicit_unit(const stab_func *fn) {
     return fn->ret_explicit && fn->ret_type == TYPE_UNIT;
 }
@@ -63,6 +65,12 @@ static sem_res_t stab_res_convert(stab_res_t res) {
     }
 }
 
+// Returns last statement from block.
+static const AstNode *last_statement(const AstNode *block) {
+    const AstNodeList *statements = &block->as.block.statements;
+    return statements->items[statements->count - 1];
+}
+
 // Checks that the main function has a valid signature.
 // Returns SEM_OK if signature valid, otherwise a semantic error code.
 static sem_res_t check_main_signature(const AstNode *function) {
@@ -71,7 +79,7 @@ static sem_res_t check_main_signature(const AstNode *function) {
         return error(SEM_BAD_CALL, function->line, "@main function cannot have parameters");
     }
 
-    // main functions has to have Unit return type (or none specified)
+    // main function has to have Unit return type (or none specified)
     DataType return_type = function->as.function.return_type;
     if (return_type != TYPE_UNKNOWN && return_type != TYPE_UNIT) {
         return error(SEM_TYPE, function->line, "@main function must return Unit");
@@ -81,7 +89,7 @@ static sem_res_t check_main_signature(const AstNode *function) {
 }
 
 // Builds a parameter list for symtable from given function AST node.
-// Returns SEM_OK if sucessful, otherwise SEM_INTERNAL (memory allocation failed).
+// Returns SEM_OK if successful, otherwise SEM_INTERNAL (memory allocation failed).
 static sem_res_t build_param_list(const AstNode *function, stab_param_list *out) {
     const AstNodeList *parameters = &function->as.function.parameters;
 
@@ -113,7 +121,7 @@ static sem_res_t build_param_list(const AstNode *function, stab_param_list *out)
 
 // Declares function in the global symtable, builds parameter list.
 // If function is marked as main, checks signature and registers it.
-// Returns SEM_OK on sucess, otherwise semantic error code.
+// Returns SEM_OK on success, otherwise semantic error code.
 static sem_res_t declare_function(AstNode *fn) {
     assert(fn->node_kind == AST_FUNCTION);
 
@@ -185,34 +193,13 @@ static sem_res_t collect_all_functions(const AstNode *program) {
     return SEM_OK;
 }
 
-static sem_res_t declare_params(AstNode *fn, stab_func *f) {
-    const AstNodeList *params = &fn->as.function.parameters;
-    size_t params_len = params->count;
-
-    for (size_t i = 0; i < params_len; i++) {
-        AstNode *param = params->items[i];
-
-        stab_res_t res;
-        stab_var *v = stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res, true);
-        if (!v) {
-            if (res == ST_REDEFINED) {
-                return error(SEM_REDEFINED, param->line, "duplicate parameter name");
-            }
-            return stab_res_convert(res);
-        }
-
-        // for codegen
-        param->var_id = v->id;
-        f->param_lists[0].params[i].id = v->id;
-    }
-
-    return SEM_OK;
-}
-
-// again ugly, but works for now
-static sem_res_t check_fn(stab_func *fn);
+// forward declarations
+static sem_res_t check_nested_block(AstNode *block);
+static sem_res_t check_function(stab_func *fn);
 static sem_res_t check_expr(AstNode *node);
 
+// Checks unary operator (-x +x), operand must be a number.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_unary(AstNode *node) {
     AstNode *operand = node->as.unary.operand;
 
@@ -221,6 +208,7 @@ static sem_res_t check_unary(AstNode *node) {
         return res;
     }
 
+    // operand must be a number
     if (!is_numeric(operand->type)) {
         return error(SEM_TYPE, node->line, "unary operator requires a number");
     }
@@ -229,6 +217,9 @@ static sem_res_t check_unary(AstNode *node) {
     return SEM_OK;
 }
 
+// Checks binary operator from left to right.
+// Implicitly convert Int to Double when needed.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_binary(AstNode *node) {
     AstNode *left = node->as.binary.left;
     AstNode *right = node->as.binary.right;
@@ -247,16 +238,19 @@ static sem_res_t check_binary(AstNode *node) {
     DataType l = left->type;
     DataType r = right->type;
 
+    // both operands are numbers
     bool numbers = is_numeric(l) && is_numeric(r);
+    // both operands are strings
     bool strings = l == TYPE_STRING && r == TYPE_STRING;
 
     switch (node->as.binary.operator_type) {
     case OP_ADD:
+        // + on strings is concatenation
         if (strings) {
             node->type = TYPE_STRING;
             return SEM_OK;
         }
-        // intentional fall through
+        // intentional fall through to arithmetic
     case OP_SUB:
     case OP_MUL:
     case OP_DIV:
@@ -264,6 +258,7 @@ static sem_res_t check_binary(AstNode *node) {
             return error(SEM_TYPE, node->line, "arithmetic operator requires numbers");
         }
 
+        // implicit conversion to Double when needed
         if (l == TYPE_INT && r == TYPE_INT) {
             node->type = TYPE_INT;
         } else {
@@ -276,6 +271,7 @@ static sem_res_t check_binary(AstNode *node) {
     case OP_LE:
     case OP_GT:
     case OP_GE:
+        // throw error when incomparable
         if (!numbers && !strings) {
             return error(SEM_TYPE, node->line, "relational operator requires two numbers or two strings");
         }
@@ -286,6 +282,7 @@ static sem_res_t check_binary(AstNode *node) {
 
     case OP_EQ:
     case OP_NE:
+        // ensure the same type for both operands
         if (!numbers && l != r) {
             return error(SEM_TYPE, node->line, "equality operator requires same types or two numbers");
         }
@@ -300,6 +297,9 @@ static sem_res_t check_binary(AstNode *node) {
     }
 }
 
+// Checks a function call and infers return type for normal function.
+// Recursive call require explicit return type.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_call(AstNode *node) {
     stab_func *f = stab_find_func(sem_st, node->as.call.name, NULL);
     if (!f) {
@@ -313,10 +313,8 @@ static sem_res_t check_call(AstNode *node) {
         return error(SEM_BAD_CALL, node->line, "wrong number of arguments");
     }
 
-    size_t arg_len = args->count;
-
     // left to right
-    for (size_t i = 0; i < arg_len; i++) {
+    for (size_t i = 0; i < args->count; i++) {
         sem_res_t res = check_expr(args->items[i]);
         if (res != SEM_OK) {
             return res;
@@ -327,7 +325,8 @@ static sem_res_t check_call(AstNode *node) {
         }
     }
 
-    // recursion has to have explicit return type
+    // callee is being checked = recursion
+    // every function in the cycle needs explicit return type
     if (f->infer == INFER_RUNNING) {
         for (const fn_chain *c = checking;; c = c->prev) {
             if (!c->fn->ret_explicit) {
@@ -337,8 +336,9 @@ static sem_res_t check_call(AstNode *node) {
                 break;
             }
         }
+        // callee not checked yet
     } else if (f->infer == INFER_NONE) {
-        sem_res_t res = check_fn(f);
+        sem_res_t res = check_function(f);
         if (res != SEM_OK) {
             return res;
         }
@@ -349,7 +349,9 @@ static sem_res_t check_call(AstNode *node) {
     return SEM_OK;
 }
 
-static sem_res_t check_ident(AstNode *node) {
+// Checks identifier of a variable and sets type and id.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_identifier(AstNode *node) {
     stab_var *v = stab_find_var(sem_st, node->as.identifier.name);
     if (!v) {
         return error(SEM_UNDEFINED, node->line, "undefined variable");
@@ -361,14 +363,16 @@ static sem_res_t check_ident(AstNode *node) {
     return SEM_OK;
 }
 
-static sem_res_t check_expr_bool(AstNode *node) {
+// Checks expression and sets its node type and var id.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_expr(AstNode *node) {
     switch (node->node_kind) {
     case AST_LITERAL:
-        // no need to check
+        // no need to check, type already set by parser
         return SEM_OK;
 
     case AST_IDENTIFIER:
-        return check_ident(node);
+        return check_identifier(node);
 
     case AST_UNARY_OPERATOR:
         return check_unary(node);
@@ -384,16 +388,9 @@ static sem_res_t check_expr_bool(AstNode *node) {
     }
 }
 
-// boolean hot fix
-static sem_res_t check_expr(AstNode *node) {
-    sem_res_t res = check_expr_bool(node);
-    if (res == SEM_OK && node->type == TYPE_BOOL) {
-        return error(SEM_TYPE, node->line, "Boolean value can be used only as a condition");
-    }
-    return res;
-}
-
-static sem_res_t check_var_def(AstNode *node) {
+// Checks variable definition, infers type if needed.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_variable_definition(AstNode *node) {
     AstNode *value = node->as.variable_definition.value;
 
     sem_res_t res = check_expr(value);
@@ -402,8 +399,10 @@ static sem_res_t check_var_def(AstNode *node) {
     }
 
     DataType type = node->as.variable_definition.declared_type;
+    // not a declared type = infer it
     if (type == TYPE_UNKNOWN) {
         type = value->type;
+        // declared type, value must match type
     } else if (!is_assignable(type, value->type)) {
         return error(SEM_TYPE, node->line, "incompatible initialization of variable");
     }
@@ -427,6 +426,8 @@ static sem_res_t check_var_def(AstNode *node) {
     return SEM_OK;
 }
 
+// Checks assignment to an existing variable, which must be mutable.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_assign(AstNode *node) {
     stab_var *v = stab_find_var(sem_st, node->as.assign.name);
     if (!v) {
@@ -444,6 +445,7 @@ static sem_res_t check_assign(AstNode *node) {
         return res;
     }
 
+    // is type and value assignable?
     if (!is_assignable(v->type, value->type)) {
         return error(SEM_TYPE, node->line, "incompatible type in assignment");
     }
@@ -453,11 +455,10 @@ static sem_res_t check_assign(AstNode *node) {
     return SEM_OK;
 }
 
-// forward declarations
-static sem_res_t check_block(AstNode *block);
-
+// Checks condition of if / while, which must be boolean.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_cond(AstNode *cond) {
-    sem_res_t res = check_expr_bool(cond);
+    sem_res_t res = check_expr(cond);
     if (res != SEM_OK) {
         return res;
     }
@@ -469,10 +470,13 @@ static sem_res_t check_cond(AstNode *cond) {
     return SEM_OK;
 }
 
+// Checks return statement.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_return(AstNode *node) {
     const stab_func *fn = stab_current_func(sem_st);
     AstNode *value = node->as.return_statement.value;
 
+    // bare return returns (), only allowed in explicit Unit
     if (!value) {
         if (!is_explicit_unit(fn)) {
             return error(SEM_OTHER, node->line, "return without value is allowed only in Unit function");
@@ -481,6 +485,7 @@ static sem_res_t check_return(AstNode *node) {
         return SEM_OK;
     }
 
+    // all returns require explicit return type
     if (!fn->ret_explicit) {
         return error(SEM_TYPE, node->line, "function with return must have explicit return type");
     }
@@ -490,6 +495,8 @@ static sem_res_t check_return(AstNode *node) {
         return res;
     }
 
+    // explicit Unit throws away return value
+    // otherwise type must match value
     if (!is_explicit_unit(fn) && !is_assignable(fn->ret_type, value->type)) {
         return error(SEM_TYPE, node->line, "incompatible return value");
     }
@@ -498,6 +505,8 @@ static sem_res_t check_return(AstNode *node) {
     return SEM_OK;
 }
 
+// Checks expression from expression statement.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_expression_statement(AstNode *node) {
     sem_res_t res = check_expr(node->as.expression_statement.expression);
     if (res != SEM_OK) {
@@ -509,37 +518,47 @@ static sem_res_t check_expression_statement(AstNode *node) {
     return SEM_OK;
 }
 
+// Checks if statement, condition must be boolean.
+// Each branch has its own scope.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_if(AstNode *node) {
     sem_res_t res = check_cond(node->as.if_statement.condition);
     if (res != SEM_OK) {
         return res;
     }
-    res = check_block(node->as.if_statement.then_block);
+    // separate scope for each branch
+    res = check_nested_block(node->as.if_statement.then_block);
     if (res != SEM_OK) {
         return res;
     }
     // else if is stored as else block with nested if
     if (node->as.if_statement.else_block) {
-        return check_block(node->as.if_statement.else_block);
+        return check_nested_block(node->as.if_statement.else_block);
     }
     return SEM_OK;
 }
 
+// Checks while loop, condition must be boolean.
+// Body has its own scope.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_while(AstNode *node) {
     sem_res_t res = check_cond(node->as.while_statement.condition);
     if (res != SEM_OK) {
         return res;
     }
-    return check_block(node->as.while_statement.block);
+    return check_nested_block(node->as.while_statement.block);
 }
 
+// Checks a statement by calling corresponding check function.
+// Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_statement(AstNode *node) {
-    // without explicit return use TYPE_UNIT
+    // statements without value result in Unit
+    // expression statements and return overwrite it with the correct type
     node->type = TYPE_UNIT;
 
     switch (node->node_kind) {
     case AST_VARIABLE_DEFINITION:
-        return check_var_def(node);
+        return check_variable_definition(node);
 
     case AST_ASSIGN:
         return check_assign(node);
@@ -561,13 +580,14 @@ static sem_res_t check_statement(AstNode *node) {
     }
 }
 
-static sem_res_t check_statements(AstNode *block) {
+// Checks all statements in a block in order.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_all_statements(AstNode *block) {
     assert(block->node_kind == AST_BLOCK);
 
     const AstNodeList *statements = &block->as.block.statements;
-    size_t st_len = statements->count;
 
-    for (size_t i = 0; i < st_len; i++) {
+    for (size_t i = 0; i < statements->count; i++) {
         sem_res_t res = check_statement(statements->items[i]);
         if (res != SEM_OK) {
             return res;
@@ -577,13 +597,15 @@ static sem_res_t check_statements(AstNode *block) {
     return SEM_OK;
 }
 
-static sem_res_t check_block(AstNode *block) {
+// Checks neste block in its own scope.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_nested_block(AstNode *block) {
     sem_res_t res = stab_res_convert(stab_enter_scope(sem_st));
     if (res != SEM_OK) {
         return res;
     }
 
-    res = check_statements(block);
+    res = check_all_statements(block);
     if (res != SEM_OK) {
         return res;
     }
@@ -592,11 +614,7 @@ static sem_res_t check_block(AstNode *block) {
     return SEM_OK;
 }
 
-static const AstNode *last_statement(const AstNode *block) {
-    const AstNodeList *statements = &block->as.block.statements;
-    return statements->items[statements->count - 1];
-}
-
+// Returns true if the block ends with return in every branch.
 static bool all_branches_return(const AstNode *block) {
     const AstNode *last = last_statement(block);
 
@@ -617,7 +635,7 @@ static bool all_branches_return(const AstNode *block) {
 
     return all_branches_return(else_block);
 }
-
+// Returns true if the block ends with Unit in every branch.
 static bool all_branches_unit(const AstNode *block) {
     const AstNode *last = last_statement(block);
 
@@ -639,6 +657,7 @@ static bool all_branches_unit(const AstNode *block) {
     return all_branches_unit(else_block);
 }
 
+// Returns true if the function body may end with if.
 static bool if_at_end_allowed(const stab_func *fn, const AstNode *body) {
     if (is_explicit_unit(fn)) {
         return true;
@@ -655,9 +674,39 @@ static bool if_at_end_allowed(const stab_func *fn, const AstNode *body) {
     return false;
 }
 
-static sem_res_t check_fn(stab_func *fn) {
+// Declares all parameters of a function as immutable variables.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t declare_params(AstNode *fn, stab_func *f) {
+    const AstNodeList *parameters = &fn->as.function.parameters;
+
+    for (size_t i = 0; i < parameters->count; i++) {
+        AstNode *param = parameters->items[i];
+
+        stab_res_t res;
+        stab_var *var = stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res, true);
+        if (!var) {
+            if (res == ST_REDEFINED) {
+                return error(SEM_REDEFINED, param->line, "duplicate parameter name");
+            }
+            return stab_res_convert(res);
+        }
+
+        // save id for codegen
+        param->var_id = var->id;
+        f->param_lists[0].params[i].id = var->id;
+    }
+
+    return SEM_OK;
+}
+
+// Checks body of a function and infers its return type.
+// The function is marked INFER_RUNNING while being checked, so check_call() can detect recursion,
+// and its chain link lets check_call verify that every function has explicit return type.
+// Returns SEM_OK if successful, otherwise semantic error code.
+static sem_res_t check_function(stab_func *fn) {
     AstNode *ast = fn->ast_node;
 
+    // push chain of currently being checked functions
     fn_chain link = {fn, checking};
     checking = &link;
     fn->infer = INFER_RUNNING;
@@ -667,6 +716,7 @@ static sem_res_t check_fn(stab_func *fn) {
         return res;
     }
 
+    // declare params as immutable variables
     res = declare_params(ast, fn);
     if (res != SEM_OK) {
         return res;
@@ -683,7 +733,7 @@ static sem_res_t check_fn(stab_func *fn) {
         first->as.expression_statement.expression = value;
     }
 
-    res = check_statements(body);
+    res = check_all_statements(body);
     if (res != SEM_OK) {
         return res;
     }
@@ -692,23 +742,31 @@ static sem_res_t check_fn(stab_func *fn) {
     const AstNodeList *statements = &body->as.block.statements;
     const AstNode *last = statements->items[statements->count - 1];
 
+    // ending with if is allowed only for:
+    //  - explicit Unit
+    //  - return in every branch
+    //  - return type Unit in every branch
     if (last->node_kind == AST_IF && !if_at_end_allowed(fn, body)) {
         return error(SEM_TYPE, last->line, "function body ending with if must return in every branch");
     }
 
+    // infer return type from last one
     if (!fn->ret_explicit) {
         fn->ret_type = last->type;
-
+        // return type doesnt match allowed return types
     } else if (!is_explicit_unit(fn) && last->node_kind != AST_RETURN && last->node_kind != AST_IF) {
         if (!is_assignable(fn->ret_type, last->type)) {
             return error(SEM_TYPE, last->line, "result of function body does not match return type");
         }
     }
 
+    // main fn has to end with Unit return type
     if (fn->is_main && fn->ret_type != TYPE_UNIT) {
         return error(SEM_TYPE, ast->line, "@main function must return Unit");
     }
 
+    // pop chain
+    // no invalid recursion found by check_call()
     fn->infer = INFER_DONE;
     checking = link.prev;
 
@@ -716,20 +774,22 @@ static sem_res_t check_fn(stab_func *fn) {
     return SEM_OK;
 }
 
-// second pass, checks bodies of all functions
-static sem_res_t check_fns(const AstNode *program) {
+// Check bodies of all functions.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_all_functions(const AstNode *program) {
     const AstNodeList *functions = &program->as.program.functions;
-    size_t fn_len = functions->count;
 
-    for (size_t i = 0; i < fn_len; i++) {
-        stab_func *fn = stab_find_func(sem_st, functions->items[i]->as.function.name, NULL);
+    for (size_t i = 0; i < functions->count; i++) {
+        stab_func *func = stab_find_func(sem_st, functions->items[i]->as.function.name, NULL);
 
-        if (fn->infer != INFER_NONE) {
+        // infer done, skip this function
+        if (func->infer != INFER_NONE) {
             continue;
         }
 
-        sem_res_t res = check_fn(fn);
+        sem_res_t res = check_function(func);
         if (res != SEM_OK) {
+            // error() calling is handled by check_function()
             return res;
         }
     }
@@ -756,5 +816,6 @@ sem_res_t semantic_analyse(AstNode *program) {
         return error(SEM_UNDEFINED, 0, "missing @main function");
     }
 
-    return check_fns(program);
+    // second pass: check bodies of every function, verify statements, expression, conditions etc.
+    return check_all_functions(program);
 }
