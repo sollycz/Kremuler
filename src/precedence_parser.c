@@ -12,6 +12,7 @@
 #include "parser.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 
 static const char precedence_table[19][19] = {
@@ -530,6 +531,81 @@ static int reduce_expression(PrecedenceStack *stack) {
     return 2;
 }
 
+static int parse_argument_list(Parser *parser, AstNode *node, size_t list_index) {
+    Token *token = &parser->current;
+
+    ParseResult result = next_token(parser);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    if (token->type == TOK_RIGHT_PARENTHESIS) {
+        return next_token(parser);
+    }
+
+    while (1) {
+        AstNode *arg = NULL;
+        result = parse_expression(parser, &arg);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        bool bool_result = ast_list_push(&node->as.call.args, arg);
+        if (bool_result != true) {
+            ast_free(arg);
+            return 99;
+        }
+        node->as.call.arg_list_sizes[list_index]++;
+
+        if (token->type == TOK_RIGHT_PARENTHESIS) {
+            return next_token(parser);
+        }
+
+        if (token->type != TOK_COMMA) {
+            return 2;
+        }
+        
+        result = next_token(parser);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        if (token->type == TOK_RIGHT_PARENTHESIS) {
+            if (token->lf_before == false) {
+                return 2;
+            }
+            return next_token(parser);
+        }
+    }
+}
+
+static int parse_argument_lists(Parser *parser, AstNode *node) {
+    Token *token = &parser->current;
+
+    while (token->type == TOK_LEFT_PARENTHESIS) {
+        size_t list_index = node->as.call.arg_list_count;
+
+        if (list_index >= SIZE_MAX / sizeof(size_t)) {
+            return 99;
+        }
+        size_t *tmp = realloc(node->as.call.arg_list_sizes, (list_index + 1) * sizeof(size_t));
+        if (tmp == NULL) {
+            return 99;
+        }
+        node->as.call.arg_list_sizes = tmp;
+        
+        node->as.call.arg_list_sizes[list_index] = 0;
+        node->as.call.arg_list_count++;
+
+        int status = parse_argument_list(parser, node, list_index);
+        if (status != PARSE_OK) {
+            return status;
+        }
+    }
+
+    return 0;
+}
+
 /**
  * @brief parse a function call and create AST
  * @param[in, out] parser provider for the input tokens
@@ -551,83 +627,22 @@ int parse_function_call(Parser *parser, AstNode **result) {
         return 99;
     }
 
+    node->as.call.arg_list_count = 0;
+
     ParseResult status = next_token(parser);
     if (status != PARSE_OK) {
         ast_free(node);
         return status;
     }
 
-    status = next_token(parser);
+    status = parse_argument_lists(parser, node);
     if (status != PARSE_OK) {
         ast_free(node);
         return status;
     }
 
-    if (token->type == TOK_RIGHT_PARENTHESIS) {
-        status = next_token(parser);
-        if (status != PARSE_OK) {
-            ast_free(node);
-            return status;
-        }
-
-        *result = node;
-        return 0;
-    }
-
-    while (1) {
-        AstNode *argument = NULL;
-        ParseResult status = parse_expression(parser, &argument);
-        if (status != PARSE_OK) {
-            ast_free(node);
-            return status;
-        }
-
-        bool argument_added = ast_list_push(&node->as.call.args, argument);
-        if (argument_added != true) {
-            ast_free(node);
-            ast_free(argument);
-            return 99;
-        }
-
-        if (token->type == TOK_RIGHT_PARENTHESIS) {
-            status = next_token(parser);
-            if (status != PARSE_OK) {
-                ast_free(node);
-                return status;
-            }
-            
-            *result = node;
-            return 0;
-        }
-
-        if (token->type != TOK_COMMA) {
-            ast_free(node);
-            return 2;
-        }
-
-        status = next_token(parser);
-        if (status != PARSE_OK) {
-            ast_free(node);
-            return status;
-        }
-
-        if (token->type == TOK_RIGHT_PARENTHESIS) {
-            // line feed is required between a trailing comma and a right parenthesis
-            if (token->lf_before == false) {
-                ast_free(node);
-                return 2;
-            }
-
-            status = next_token(parser);
-            if (status != PARSE_OK) {
-                ast_free(node);
-                return status;
-            }
-
-            *result = node;
-            return 0;
-        }
-    }
+    *result = node;
+    return 0;
 }
 
 /**
@@ -714,6 +729,16 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
                 return 99;
             }
             strcpy(conversion_to_string->as.call.name, "toStr");
+
+            conversion_to_string->as.call.arg_list_sizes = malloc(sizeof(size_t));
+            if (conversion_to_string->as.call.arg_list_sizes == NULL) {
+                ast_free(conversion_to_string);
+                ast_free(node);
+                ast_free(part);
+                return 99;
+            }
+            conversion_to_string->as.call.arg_list_count = 1;
+            conversion_to_string->as.call.arg_list_sizes[0] = 1;
 
             if (ast_list_push(&conversion_to_string->as.call.args, part) != true) {
                 ast_free(conversion_to_string);
@@ -870,6 +895,9 @@ int parse_expression(Parser *parser, AstNode **result) {
                 return 99;
             }
 
+            node->as.call.is_member = true;
+            node->as.call.arg_list_count = 0;
+
             if (ast_list_push(&node->as.call.args, stack.items[stack.length - 1].ast) != true) {
                 ast_free(node);
                 stack_and_ast_free(&stack);
@@ -882,6 +910,13 @@ int parse_expression(Parser *parser, AstNode **result) {
                 stack_and_ast_free(&stack);
                 return next_result;
             }
+
+            next_result = parse_argument_lists(parser, node);
+            if (next_result != PARSE_OK) {
+                stack_and_ast_free(&stack);
+                return next_result;
+            }
+        
             continue;
         }
 
