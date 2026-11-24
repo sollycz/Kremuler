@@ -262,6 +262,27 @@ static ParseResult parse_parameter(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
+// creates a deep copy of a parameter node, so every extension method owns its own receiver
+// (returns NULL on failure)
+static AstNode *parameter_copy(const AstNode *parameter) {
+    AstNode *copy = ast_new(AST_PARAMETER, parameter->line);
+    if (copy == NULL) {
+        return NULL;
+    }
+
+    size_t length = strlen(parameter->as.parameter.name) + 1;
+    copy->as.parameter.name = malloc(length);
+    if (copy->as.parameter.name == NULL) {
+        ast_free(copy);
+        return NULL;
+    }
+
+    memcpy(copy->as.parameter.name, parameter->as.parameter.name, length);
+    copy->as.parameter.type = parameter->as.parameter.type;
+
+    return copy;
+}
+
 // <parameters> -> <parameter> <parameter_next> | epsilon
 // <parameter_next> -> TOK_COMMA <parameter> <parameter_next> | epsilon
 static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
