@@ -763,8 +763,8 @@ static ParseResult parse_function_body(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <function> -> TOK_KW_DEF TOK_ID TOK_LEFT_PARENTHESIS <parameters> TOK_RIGHT_PARENTHESIS <optional_type> TOK_ASSIGN
-// <function_body>
+// <function> -> TOK_KW_DEF TOK_ID <parameter_list> <optional_type> TOK_ASSIGN <function_body>
+// <parameter_list> -> TOK_LEFT_PARENTHESIS <parameters> TOK_RIGHT_PARENTHESIS <parameter_list> | epsilon
 static ParseResult parse_function(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -793,25 +793,37 @@ static ParseResult parse_function(Parser *p, AstNode **out) {
         return result;
     }
 
-    // TOK_LEFT_PARENTHESIS
-    result = expect(p, TOK_LEFT_PARENTHESIS);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
+    while (p->current.type == TOK_LEFT_PARENTHESIS) {
+        size_t count_before = node->as.function.parameters.count;
 
-    // <parameters>
-    result = parse_parameters(p, &node->as.function.parameters);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
+        // TOK_LEFT_PARENTHESIS
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
 
-    // TOK_RIGHT_PARENTHESIS
-    result = expect(p, TOK_RIGHT_PARENTHESIS);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
+        // <parameters>
+        result = parse_parameters(p, &node->as.function.parameters);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+
+        // TOK_RIGHT_PARENTHESIS
+        result = expect(p, TOK_RIGHT_PARENTHESIS);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+
+        // calculate and update the list size
+        size_t list_size = node->as.function.parameters.count - count_before;
+        result = size_list_push(&node->as.function.list_sizes, &node->as.function.list_count, list_size);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
     }
 
     // <optional_type>
