@@ -70,6 +70,9 @@ void parser_destroy(Parser *p) {
 }
 
 ParseResult next_token(Parser *p) {
+    // remembering the type of the previous token, so a statement that ends with a block (DEDENT) does not need
+    // an EOL after it
+    p->previous_type = p->current.type;
     token_free(&p->current);
 
     // if we have a stored lookahead token, use that instead of asking the scanner for a new one
@@ -693,7 +696,8 @@ static ParseResult parse_statement(Parser *p, AstNode **out) {
                 return result;
             }
         }
-    } else {
+    } else if (p->previous_type != TOK_DEDENT) {
+        // a statement that ended with a block (e.g. "val x = if ... else" + block) doesnt need a TOK_EOL (CONTROL)
         ast_free(*out);
         return PARSE_SYNTAX_ERROR;
     }

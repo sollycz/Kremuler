@@ -25,7 +25,8 @@ typedef struct Parser {
     bool has_lookahead;
     unsigned int *indent_stack; // for keeping track of indentation [0] -> [0, 4] -> ...
     size_t indent_count;
-    bool at_line_start; // (is true after TOK_EOL or at the start of the file)
+    bool at_line_start;      // (is true after TOK_EOL or at the start of the file)
+    TokenType previous_type; // type of the token before current (CONTROL)
 } Parser;
 
 // initializes the parser
