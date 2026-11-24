@@ -638,12 +638,23 @@ static ParseResult parse_statement(Parser *p, AstNode **out) {
         return result;
     }
 
-    // <statement_end> -> TOK_EOL | TOK_SEMICOLON
+    // <statement_end> -> TOK_EOL | TOK_SEMICOLON | TOK_SEMICOLON TOK_EOL
     if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
+        bool was_semicolon = (p->current.type == TOK_SEMICOLON);
+
         result = next_token(p);
         if (result != PARSE_OK) {
             ast_free(*out);
             return result;
+        }
+
+        // a fix to allow for both a ; and EOL
+        if (was_semicolon && p->current.type == TOK_EOL) {
+            result = next_token(p);
+            if (result != PARSE_OK) {
+                ast_free(*out);
+                return result;
+            }
         }
     } else {
         ast_free(*out);
