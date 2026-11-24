@@ -21,7 +21,8 @@ typedef enum AstKind {
     AST_BLOCK,
     /** ((statements)) */
     AST_WHILE,
-    AST_IF,
+    AST_FOR, // CONTROL
+    AST_IF,  // also used as an expression (CONTROL)
     AST_VARIABLE_DEFINITION,
     AST_ASSIGN,
     AST_RETURN,
@@ -78,9 +79,12 @@ struct AstNode {
 
         struct {
             char *name;
-            AstNodeList parameters;
-            DataType return_type; // also TYPE_UNKNOWN if not explicitly written
+            AstNodeList parameters; // all parameters from all lists, flattened
+            size_t *list_sizes;     // number of parameters in each list
+            size_t list_count;      // always set by the parser: 0 = no parentheses ("def answer"), "def f()" = 1
+            DataType return_type;   // also TYPE_UNKNOWN if not explicitly written
             AstNode *block;
+            AstNode *receiver; // AST_PARAMETER of the extended value, NULL for a normal function (EXTKW)
             bool is_main_func;
         } function;
 
@@ -97,6 +101,16 @@ struct AstNode {
             AstNode *condition;
             AstNode *block;
         } while_statement;
+
+        struct {
+            char *var_name;
+            AstNode *from;
+            AstNode *to;
+            AstNode *step;      // NULL if "by" is missing
+            bool inclusive;     // "to" = true, "until" = false
+            AstNodeList guards; // conditions of "if" guards, may be empty
+            AstNode *block;
+        } for_statement;
 
         struct {
             AstNode *condition;
@@ -149,7 +163,11 @@ struct AstNode {
 
         struct {
             char *name;
-            AstNodeList args;
+            // x.plus(1)(2): args = [x, 1, 2], arg_list_sizes = [1, 1], arg_list_count = 2, is_member = true
+            AstNodeList args;       // flattened, the receiver is args[0] if is_member
+            size_t *arg_list_sizes; // number of arguments in each list, the receiver is not counted
+            size_t arg_list_count;  // always set by the parser: 0 = no parentheses ("x.twice")
+            bool is_member;
         } call;
     } as;
 };

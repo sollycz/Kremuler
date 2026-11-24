@@ -64,7 +64,9 @@ void ast_free(AstNode *node) {
     case AST_FUNCTION:
         free(node->as.function.name);
         ast_list_free(&node->as.function.parameters);
+        free(node->as.function.list_sizes);
         ast_free(node->as.function.block);
+        ast_free(node->as.function.receiver);
         break;
     case AST_PARAMETER:
         free(node->as.parameter.name);
@@ -75,6 +77,14 @@ void ast_free(AstNode *node) {
     case AST_WHILE:
         ast_free(node->as.while_statement.condition);
         ast_free(node->as.while_statement.block);
+        break;
+    case AST_FOR:
+        free(node->as.for_statement.var_name);
+        ast_free(node->as.for_statement.from);
+        ast_free(node->as.for_statement.to);
+        ast_free(node->as.for_statement.step);
+        ast_list_free(&node->as.for_statement.guards);
+        ast_free(node->as.for_statement.block);
         break;
     case AST_IF:
         ast_free(node->as.if_statement.condition);
@@ -114,6 +124,7 @@ void ast_free(AstNode *node) {
     case AST_CALL:
         free(node->as.call.name);
         ast_list_free(&node->as.call.args);
+        free(node->as.call.arg_list_sizes);
         break;
     }
 
