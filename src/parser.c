@@ -89,7 +89,7 @@ ParseResult next_token(Parser *p) {
 
     if (!p->at_line_start && p->current.lf_before == true &&
         p->current.indent <= p->indent_stack[p->indent_count - 1]) {
-        return PARSE_LEXICAL_ERROR;
+        return PARSE_SYNTAX_ERROR;
     }
 
     if (!p->at_line_start) {
@@ -122,7 +122,7 @@ ParseResult next_token(Parser *p) {
 
         // indentation between two open blocks
         if (p->indent_stack[p->indent_count - 1] < p->current.indent) {
-            return PARSE_LEXICAL_ERROR;
+            return PARSE_SYNTAX_ERROR;
         }
 
         // store the real token as lookahead and return a DEDENT token
