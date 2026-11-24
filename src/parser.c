@@ -916,6 +916,87 @@ static ParseResult parse_function_main(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
+// parses one method of an extension, gives it a copy of the receiver and adds it to the function list (EXTKW)
+static ParseResult parse_extension_method(Parser *p, AstNodeList *functions, const AstNode *receiver) {
+    AstNode *method = NULL;
+    ParseResult result = parse_function(p, &method);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    method->as.function.receiver = parameter_copy(receiver);
+    if (method->as.function.receiver == NULL) {
+        ast_free(method);
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    if (ast_list_push(functions, method) == false) {
+        ast_free(method);
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    return PARSE_OK;
+}
+
+// parses an extension with one or more methods for one receiver (EXTKW)
+static ParseResult parse_extension(Parser *p, AstNodeList *functions) {
+    ParseResult result;
+
+    // TOK_KW_EXTENSION
+    result = expect(p, TOK_KW_EXTENSION);
+    if (result != PARSE_OK) {
+        return result;
+    }
+    // TOK_LEFT_PARENTHESIS
+    result = expect(p, TOK_LEFT_PARENTHESIS);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // the receiver: exactly one explicitly typed parameter
+    AstNode *receiver = NULL;
+    result = parse_parameter(p, &receiver);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // TOK_RIGHT_PARENTHESIS
+    result = expect(p, TOK_RIGHT_PARENTHESIS);
+    if (result != PARSE_OK) {
+        ast_free(receiver);
+        return result;
+    }
+
+    // a single method on the same line
+    if (p->current.type == TOK_KW_DEF) {
+        result = parse_extension_method(p, functions, receiver);
+        ast_free(receiver);
+        return result;
+    }
+
+    // TOK_EOL TOK_INDENT, then an indented block of methods
+    result = expect(p, TOK_EOL);
+    if (result == PARSE_OK) {
+        result = expect(p, TOK_INDENT);
+    }
+
+    while (result == PARSE_OK && p->current.type != TOK_DEDENT) {
+        if (p->current.type != TOK_KW_DEF) {
+            result = PARSE_SYNTAX_ERROR;
+            break;
+        }
+        result = parse_extension_method(p, functions, receiver);
+    }
+
+    // TOK_DEDENT
+    if (result == PARSE_OK) {
+        result = expect(p, TOK_DEDENT);
+    }
+
+    ast_free(receiver);
+    return result;
+}
+
 // <functions> -> <function> <functions> | <function_main> <functions> | epsilon
 static ParseResult parse_functions(Parser *p, AstNodeList *functions) {
     while (p->current.type == TOK_KW_DEF || p->current.type == TOK_AT) {
