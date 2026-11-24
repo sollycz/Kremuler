@@ -551,6 +551,14 @@ int parse_function_call(Parser *parser, AstNode **result) {
         return 99;
     }
 
+    node->as.call.arg_list_sizes = malloc(sizeof(size_t));
+    if (node->as.call.arg_list_sizes == NULL) {
+        ast_free(node);
+        return 99;
+    }
+    node->as.call.arg_list_count = 1;
+    node->as.call.arg_list_sizes[0] = 0;
+
     ParseResult status = next_token(parser);
     if (status != PARSE_OK) {
         ast_free(node);
@@ -588,6 +596,7 @@ int parse_function_call(Parser *parser, AstNode **result) {
             ast_free(argument);
             return 99;
         }
+        node->as.call.arg_list_sizes[0] = node->as.call.args.count;
 
         if (token->type == TOK_RIGHT_PARENTHESIS) {
             status = next_token(parser);
@@ -714,6 +723,16 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
                 return 99;
             }
             strcpy(conversion_to_string->as.call.name, "toStr");
+
+            conversion_to_string->as.call.arg_list_sizes = malloc(sizeof(size_t));
+            if (conversion_to_string->as.call.arg_list_sizes == NULL) {
+                ast_free(conversion_to_string);
+                ast_free(node);
+                ast_free(part);
+                return 99;
+            }
+            conversion_to_string->as.call.arg_list_count = 1;
+            conversion_to_string->as.call.arg_list_sizes[0] = 1;
 
             if (ast_list_push(&conversion_to_string->as.call.args, part) != true) {
                 ast_free(conversion_to_string);
@@ -869,6 +888,9 @@ int parse_expression(Parser *parser, AstNode **result) {
                 stack_and_ast_free(&stack);
                 return 99;
             }
+
+            node->as.call.is_member = true;
+            node->as.call.arg_list_count = 0;
 
             if (ast_list_push(&node->as.call.args, stack.items[stack.length - 1].ast) != true) {
                 ast_free(node);
