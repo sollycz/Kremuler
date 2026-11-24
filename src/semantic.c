@@ -88,46 +88,88 @@ static sem_res_t check_main_signature(const AstNode *function) {
     return SEM_OK;
 }
 
-// Builds a parameter list for symtable from given function AST node.
+// Frees parameter lists created by build_param_lists().
+static void free_param_lists(stab_param_list *lists, size_t count) {
+    if (!lists) {
+        return;
+    }
+    for (size_t i = 0; i < count; i++) {
+        free(lists[i].params);
+    }
+    free(lists);
+}
+
+// Builds parameter lists for symtable from given function AST node.
 // Returns SEM_OK if successful, otherwise SEM_INTERNAL (memory allocation failed).
-static sem_res_t build_param_list(const AstNode *function, stab_param_list *out) {
+static sem_res_t build_param_lists(const AstNode *function, stab_param_list **out, size_t *out_count) {
     const AstNodeList *parameters = &function->as.function.parameters;
+    size_t list_count = function->as.function.list_count;
+    const size_t *list_sizes = function->as.function.list_sizes;
 
-    out->params = NULL;
-    out->count = parameters->count;
+    *out = NULL;
+    *out_count = list_count;
 
-    // no parameters, nothing to allocate
-    if (parameters->count == 0) {
+    // no need to allocate anything
+    if (list_count == 0) {
+        assert(parameters->count == 0);
         return SEM_OK;
     }
 
-    // allocate param_list
-    out->params = malloc(parameters->count * sizeof(*out->params));
-    if (!out->params) {
+    stab_param_list *lists = calloc(list_count, sizeof(*lists));
+    if (!lists) {
         return SEM_INTERNAL;
     }
 
-    // copy name and type for every parameter
-    for (size_t i = 0; i < parameters->count; i++) {
-        const AstNode *param = parameters->items[i];
-        assert(param->node_kind == AST_PARAMETER);
+    // assert rather than segfault if parser makes a mistake
+    assert(list_sizes != NULL);
 
-        out->params[i].name = param->as.parameter.name;
-        out->params[i].type = param->as.parameter.type;
+    size_t param_idx = 0;
+    for (size_t list_idx = 0; list_idx < list_count; list_idx++) {
+        size_t size = list_sizes[list_idx];
+        lists[list_idx].count = size;
+
+        // empty list
+        if (size == 0) {
+            continue;
+        }
+
+        lists[list_idx].params = malloc(size * sizeof(*lists[list_idx].params));
+        if (!lists[list_idx].params) {
+            free_param_lists(lists, list_count);
+            return SEM_INTERNAL;
+        }
+
+        // copy name and type of every parameter in this list
+        for (size_t i = 0; i < size; i++) {
+            const AstNode *param = parameters->items[param_idx];
+            assert(param->node_kind == AST_PARAMETER);
+
+            lists[list_idx].params[i].name = param->as.parameter.name;
+            lists[list_idx].params[i].type = param->as.parameter.type;
+            // assigned later by declare_params()
+            lists[list_idx].params[i].id = 0;
+
+            param_idx++;
+        }
     }
 
+    // list_sizes has to cover all flattened parameters exactly
+    assert(param_idx == parameters->count);
+
+    *out = lists;
     return SEM_OK;
 }
 
-// Declares function in the global symtable, builds parameter list.
+// Declares function in the global symtable, builds parameter lists.
 // If function is marked as main, checks signature and registers it.
 // Returns SEM_OK on success, otherwise semantic error code.
 static sem_res_t declare_function(AstNode *fn) {
     assert(fn->node_kind == AST_FUNCTION);
 
     // allocate param_list
-    stab_param_list list;
-    sem_res_t res = build_param_list(fn, &list);
+    stab_param_list *lists;
+    size_t list_count;
+    sem_res_t res = build_param_lists(fn, &lists, &list_count);
     if (res != SEM_OK) {
         return res;
     }
@@ -144,9 +186,10 @@ static sem_res_t declare_function(AstNode *fn) {
     stab_res_t st_res;
     // list_count = 1 -> single parameter list
     // only the PARAMLISTS extension allow multiple param_lists
-    stab_func *f = stab_add_func(sem_st, fn->as.function.name, &list, 1, ret_type, ret_explicit, NULL, &st_res);
+    stab_func *f =
+        stab_add_func(sem_st, fn->as.function.name, lists, list_count, ret_type, ret_explicit, NULL, &st_res);
     // now lives in stab, we can safely free it
-    free(list.params);
+    free_param_lists(lists, list_count);
 
     if (!f) {
         if (st_res == ST_REDEFINED) {
@@ -679,23 +722,31 @@ static bool if_at_end_allowed(const stab_func *fn, const AstNode *body) {
 static sem_res_t declare_params(AstNode *fn, stab_func *f) {
     const AstNodeList *parameters = &fn->as.function.parameters;
 
-    for (size_t i = 0; i < parameters->count; i++) {
-        AstNode *param = parameters->items[i];
+    size_t param_idx = 0;
 
-        stab_res_t res;
-        stab_var *var = stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res, true);
-        if (!var) {
-            if (res == ST_REDEFINED) {
-                return error(SEM_REDEFINED, param->line, "duplicate parameter name");
+    for (size_t list_idx = 0; list_idx < f->list_count; list_idx++) {
+        stab_param_list *list = &f->param_lists[list_idx];
+
+        for (size_t i = 0; i < list->count; i++) {
+            AstNode *param = parameters->items[param_idx];
+
+            stab_res_t res;
+            stab_var *var =
+                stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res, true);
+            if (!var) {
+                if (res == ST_REDEFINED) {
+                    return error(SEM_REDEFINED, param->line, "duplicate parameter name");
+                }
+                return stab_res_convert(res);
             }
-            return stab_res_convert(res);
+
+            // save id for codegen
+            param->var_id = var->id;
+            list->params[i].id = var->id;
+
+            param_idx++;
         }
-
-        // save id for codegen
-        param->var_id = var->id;
-        f->param_lists[0].params[i].id = var->id;
     }
-
     return SEM_OK;
 }
 
