@@ -685,6 +685,132 @@ static ParseResult parse_if(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
+// checks that the current token is the identifier with the given name (to, until, by are not keywords)
+static bool is_identifier(Parser *p, const char *name) {
+    return p->current.type == TOK_ID && strcmp(p->current.data.str_val, name) == 0;
+}
+
+// parses a for loop with one generator and any number of guards (CONTROL)
+static ParseResult parse_for(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    AstNode *node = ast_new(AST_FOR, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    // TOK_KW_FOR
+    result = expect(p, TOK_KW_FOR);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_ID (the control variable)
+    if (p->current.type != TOK_ID) {
+        ast_free(node);
+        return PARSE_SYNTAX_ERROR;
+    }
+    node->as.for_statement.var_name = p->current.data.str_val;
+    p->current.data.str_val = NULL;
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_CONTROL_ARROW
+    result = expect(p, TOK_CONTROL_ARROW);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // from
+    result = parse_expression(p, &node->as.for_statement.from);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // to | until
+    if (is_identifier(p, "to")) {
+        node->as.for_statement.inclusive = true;
+    } else if (is_identifier(p, "until")) {
+        node->as.for_statement.inclusive = false;
+    } else {
+        ast_free(node);
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    result = parse_expression(p, &node->as.for_statement.to);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // optional step
+    if (is_identifier(p, "by")) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+
+        result = parse_expression(p, &node->as.for_statement.step);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+    }
+
+    // guards
+    while (p->current.type == TOK_KW_IF) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+
+        AstNode *guard = NULL;
+        result = parse_expression(p, &guard);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+
+        if (ast_list_push(&node->as.for_statement.guards, guard) == false) {
+            ast_free(guard);
+            ast_free(node);
+            return PARSE_INTERNAL_ERROR;
+        }
+    }
+
+    // TOK_KW_DO
+    result = expect(p, TOK_KW_DO);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // body: a block or one statement on the same line
+    result = parse_branch(p, &node->as.for_statement.block);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
+}
+
 // <statement_simple> -> <variable> | <assign> | <return> | <expression> | <if>
 static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
     ParseResult result;
@@ -696,6 +822,8 @@ static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
         return parse_variable(p, out);
     case TOK_KW_RETURN:
         return parse_return(p, out);
+    case TOK_KW_FOR:
+        return parse_for(p, out);
     case TOK_ID: {
         TokenType next;
         result = lookahead_token(p, &next);
