@@ -34,6 +34,21 @@ static ParseResult indent_push(Parser *p, unsigned int indent) {
     return PARSE_OK;
 }
 
+// adds the size of one parameter list to the end of a sizes array
+static ParseResult size_list_push(size_t **sizes, size_t *count, size_t size) {
+    size_t *new_sizes = realloc(*sizes, (*count + 1) * sizeof(size_t));
+
+    if (new_sizes == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    new_sizes[*count] = size;
+    *sizes = new_sizes;
+    (*count)++;
+
+    return PARSE_OK;
+}
+
 ParseResult parser_init(Parser *p) {
     *p = (Parser){0};
     p->at_line_start = true;
