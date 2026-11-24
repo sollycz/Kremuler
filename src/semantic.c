@@ -749,6 +749,21 @@ static bool if_at_end_allowed(const stab_func *fn, const AstNode *body) {
 // Returns SEM_OK if successful, otherwise error code.
 static sem_res_t declare_params(AstNode *fn, stab_func *f) {
     const AstNodeList *parameters = &fn->as.function.parameters;
+    stab_res_t res;
+
+    // receiver of an extension is immutable
+    AstNode *receiver = fn->as.function.receiver;
+    if (receiver) {
+        stab_var *var =
+            stab_declare_var(sem_st, receiver->as.parameter.name, receiver->as.parameter.type, false, &res, true);
+        if (!var) {
+            return stab_res_convert(res);
+        }
+
+        // save id for codegen
+        receiver->var_id = var->id;
+        f->extends.id = var->id;
+    }
 
     size_t param_idx = 0;
 
@@ -758,7 +773,6 @@ static sem_res_t declare_params(AstNode *fn, stab_func *f) {
         for (size_t i = 0; i < list->count; i++) {
             AstNode *param = parameters->items[param_idx];
 
-            stab_res_t res;
             stab_var *var =
                 stab_declare_var(sem_st, param->as.parameter.name, param->as.parameter.type, false, &res, true);
             if (!var) {
@@ -775,6 +789,9 @@ static sem_res_t declare_params(AstNode *fn, stab_func *f) {
             param_idx++;
         }
     }
+
+    assert(param_idx == parameters->count);
+
     return SEM_OK;
 }
 
