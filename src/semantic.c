@@ -421,17 +421,33 @@ static sem_res_t check_call(AstNode *node) {
 }
 
 // Checks identifier of a variable and sets type and id.
+// Parser canr tell var from call of a function without parameter list.
 // Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_identifier(AstNode *node) {
+    // var has priority
     stab_var *v = stab_find_var(sem_st, node->as.identifier.name);
-    if (!v) {
+    if (v) {
+        node->type = v->type;
+        node->var_id = v->id;
+        return SEM_OK;
+    }
+
+    // next try normal fn
+    if (!stab_find_func(sem_st, node->as.identifier.name, NULL)) {
         return error(SEM_UNDEFINED, node->line, "undefined variable");
     }
 
-    node->type = v->type;
-    node->var_id = v->id;
+    // rewrite to a call
+    char *name = node->as.identifier.name;
+    node->node_kind = AST_CALL;
+    node->as.call.name = name;
+    node->as.call.args = (AstNodeList){NULL, 0};
+    node->as.call.arg_list_sizes = NULL;
+    node->as.call.arg_list_count = 0;
+    node->as.call.is_member = false;
 
-    return SEM_OK;
+    // worst case this fails, which is expected behaviour
+    return check_call(node);
 }
 
 // Checks expression and sets its node type and var id.
