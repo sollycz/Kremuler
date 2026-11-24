@@ -104,7 +104,7 @@ ParseResult next_token(Parser *p) {
 
     if (!p->at_line_start && p->current.lf_before == true &&
         p->current.indent <= p->indent_stack[p->indent_count - 1]) {
-        return PARSE_LEXICAL_ERROR;
+        return PARSE_SYNTAX_ERROR;
     }
 
     if (!p->at_line_start) {
@@ -137,7 +137,7 @@ ParseResult next_token(Parser *p) {
 
         // indentation between two open blocks
         if (p->indent_stack[p->indent_count - 1] < p->current.indent) {
-            return PARSE_LEXICAL_ERROR;
+            return PARSE_SYNTAX_ERROR;
         }
 
         // store the real token as lookahead and return a DEDENT token
@@ -651,7 +651,8 @@ static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
         if (next == TOK_ASSIGN) {
             return parse_assign(p, out);
         }
-    } // fall through to an expression statement if its not an assignment
+    }
+    // fall through - not an assignment, so its an expresssion statement
     default:
         return parse_expression_statement(p, out);
     }
@@ -674,12 +675,23 @@ static ParseResult parse_statement(Parser *p, AstNode **out) {
         return result;
     }
 
-    // <statement_end> -> TOK_EOL | TOK_SEMICOLON
+    // <statement_end> -> TOK_EOL | TOK_SEMICOLON | TOK_SEMICOLON TOK_EOL
     if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
+        bool was_semicolon = (p->current.type == TOK_SEMICOLON);
+
         result = next_token(p);
         if (result != PARSE_OK) {
             ast_free(*out);
             return result;
+        }
+
+        // a fix to allow for both a ; and EOL
+        if (was_semicolon && p->current.type == TOK_EOL) {
+            result = next_token(p);
+            if (result != PARSE_OK) {
+                ast_free(*out);
+                return result;
+            }
         }
     } else {
         ast_free(*out);

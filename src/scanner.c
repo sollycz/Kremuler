@@ -3,7 +3,6 @@
  * @brief Lexical analyzer for IFJ26 to IFJcode26
  * @author David Zoblivý (xzoblid00)
  * @date 14.11.2026
- * @todo add stderr messages
  */
 
 #include "scanner.h"
@@ -87,6 +86,23 @@ typedef struct interpolation_state {
     bool reading_expression;
     struct interpolation_state *previous;
 } InterpolationState;
+
+typedef enum {
+    STDERR_NONE,
+    STDERR_UNKNOWN_CHARACTER,
+    STDERR_INVALID_IDENTIFIER,
+    STDERR_INVALID_NUMBER,
+    STDERR_INVALID_ESCAPE,
+    STDERR_INVALID_INTERPOLATION,
+    STDERR_OPEN_STRING,
+    STDERR_OPEN_COMMENT,
+    STDERR_OPEN_INTERPOLATION,
+    STDERR_TAB_IN_INDENT,
+    STDERR_TOKEN_AFTER_COMMENT,
+    STDERR_MEMORY_ERROR,
+    STDERR_STDIN_ERROR,
+    STDERR_INVALID_STATE
+} StderrMessage;
 
 /**
  * @brief checks whether the input is a keyword or an identifier
@@ -180,6 +196,70 @@ static bool trailing_comma_allowed = false; // in parentheses after comma there 
 static bool processing_dot = false;          // VALMEM extension
 
 /**
+ * @brief prints an error message to stderr
+ * @param[in] message error to report
+ * @return SCANNER_OK for STDERR_NONE, otherwise corresponding error code
+ */
+static ScannerErrorCode scanner_error_message(StderrMessage message) {
+    switch (message) {
+        case STDERR_NONE:
+            return SCANNER_OK;
+
+        case STDERR_UNKNOWN_CHARACTER:
+            fprintf(stderr, "l:%u c:%u - unknown character!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+
+        case STDERR_INVALID_IDENTIFIER:
+            fprintf(stderr, "l:%u c:%u - invalid identifier!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+
+        case STDERR_INVALID_NUMBER:
+            fprintf(stderr, "l:%u c:%u - invalid number!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+            
+        case STDERR_INVALID_ESCAPE:
+            fprintf(stderr, "l:%u c:%u - invalid escape sequence!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+        
+        case STDERR_INVALID_INTERPOLATION:
+            fprintf(stderr, "l:%u c:%u - invalid interpolation!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+            
+        case STDERR_OPEN_STRING:
+            fprintf(stderr, "l:%u c:%u - string is not ended!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+
+        case STDERR_OPEN_COMMENT:
+            fprintf(stderr, "l:%u c:%u - comment is not ended!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+
+        case STDERR_OPEN_INTERPOLATION:
+            fprintf(stderr, "l:%u c:%u - interpolation is not ended!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+
+        case STDERR_TAB_IN_INDENT:
+            fprintf(stderr, "l:%u c:%u - there is tab in the indentation!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+
+        case STDERR_TOKEN_AFTER_COMMENT:
+            fprintf(stderr, "l:%u c:%u - there is a token after a comment!\n", last_line, last_column);
+            return SCANNER_LEXICAL_ERROR;
+
+        case STDERR_MEMORY_ERROR:
+            fprintf(stderr, "memory allocation has failed!\n");
+            return SCANNER_MEMORY_ERROR;
+
+        case STDERR_STDIN_ERROR:
+            fprintf(stderr, "reading has failed!\n");
+            return SCANNER_READ_ERROR;
+
+        default:
+            fprintf(stderr, "internal scanner error has failed!\n");
+            return SCANNER_INVALID_STATE_ERROR;
+    }
+}
+
+/**
  * @brief reads the next character from stdin and updates the position tracker
  * @return character value as int, or EOF at end of input or on a read error
  */
@@ -221,34 +301,34 @@ static int scanner_ungetc(int c) {
 
 /**
  * @brief pushes the current interpolation state to a stack
- * @return SCANNER_OK on success, otherwise SCANNER_MEMORY_ERROR
+ * @return STDERR_NONE on success, otherwise STDERR_MEMORY_ERROR
  */
-static ScannerErrorCode interpolation_push(void) {
+static StderrMessage interpolation_push(void) {
     InterpolationState *stack_node = malloc(sizeof(*stack_node));
     if (stack_node == NULL) {
-        return SCANNER_MEMORY_ERROR;
+        return STDERR_MEMORY_ERROR;
     }
 
     *stack_node = current_interpolation;
     current_interpolation.previous = stack_node;
 
-    return SCANNER_OK;
+    return STDERR_NONE;
 }
 
 /** 
  * @brief pop and restore the last saved interpolation state out of a stack 
- * @return SCANNER_OK on success, otherwise SCANNER_INVALID_STATE_ERROR if stack is empty
+ * @return STDERR_NONE on success, otherwise STDERR_INVALID_STATE if stack is empty
 */
-static ScannerErrorCode interpolation_pop(void) {
+static StderrMessage interpolation_pop(void) {
     if (current_interpolation.previous == NULL) {
-        return SCANNER_INVALID_STATE_ERROR;
+        return STDERR_INVALID_STATE;
     }
 
     InterpolationState *stack_node = current_interpolation.previous;
     current_interpolation = *stack_node;
 
     free(stack_node);
-    return SCANNER_OK;
+    return STDERR_NONE;
 }
 
 /**
@@ -269,9 +349,9 @@ void interpolation_free(void) {
 /**
  * @brief processes part of the interpolated string and creates one token
  * @param[out] token receives the token data on success
- * @return SCANNER_OK on success, otherwise relevant error code 
+ * @return STDERR_NONE on success, otherwise the specific scanner error 
  */
-static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
+static StderrMessage scanner_read_interpolated_text(Token *token) {
     if (current_interpolation.mode == INTERPOLATED_MODE_ENDED) {
         token->type = TOK_INTERPOLATED_END;
         token->line = next_line;
@@ -282,7 +362,7 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
     StringBuffer buffer = {0};
     ScannerErrorCode result = buffer_init(&buffer);
     if (result != SCANNER_OK) {
-        return result;
+        return STDERR_MEMORY_ERROR;
     }
 
     int c = scanner_getchar();
@@ -300,13 +380,13 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
 
         if (c == EOF || (c == '\n' && current_interpolation.mode == INTERPOLATED_MODE_SINGLE_LINE)) {
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_OPEN_STRING;
         }
 
         result = buffer_append(&buffer, (char)c);
         if (result != SCANNER_OK) {
             buffer_free(&buffer);
-            return result;
+            return STDERR_MEMORY_ERROR;
         }
 
         c = scanner_getchar();
@@ -318,7 +398,7 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
         token->type = TOK_STRING_LITERAL;
         token->data.str_val = buffer.data;
 
-        return SCANNER_OK;
+        return STDERR_NONE;
     }
 
     if (c == '"' && buffer.length == 0 && current_interpolation.mode == INTERPOLATED_MODE_SINGLE_LINE) {
@@ -334,7 +414,7 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             result = buffer_append(&buffer, (char)c);
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
 
             c = scanner_getchar();
@@ -348,13 +428,13 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             current_interpolation.mode = INTERPOLATED_MODE_ENDED;
         } else if (c == EOF) {
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_OPEN_STRING;
         }
 
         token->type = TOK_STRING_LITERAL;
         token->data.str_val = buffer.data;
 
-        return SCANNER_OK;
+        return STDERR_NONE;
     }
 
     if (c == '$') {
@@ -364,12 +444,12 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             result = buffer_append(&buffer, (char)c);
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
 
             token->type = TOK_STRING_LITERAL;
             token->data.str_val = buffer.data;
-            return SCANNER_OK;
+            return STDERR_NONE;
         }
 
         if (c == '{') {
@@ -378,14 +458,14 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             token->type = TOK_INTERPOLATION_BEGIN;
             current_interpolation.reading_expression = true;
 
-            return SCANNER_OK;
+            return STDERR_NONE;
         }
 
         if (isalpha(c) || (c == '_')) {
             ScannerErrorCode result = buffer_append(&buffer, (char)c);
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
 
             c = scanner_getchar();
@@ -393,7 +473,7 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 c = scanner_getchar();
             }
@@ -402,7 +482,7 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
 
             if (buffer.length == 1 && buffer.data[0] == '_') {
                 buffer_free(&buffer);
-                return SCANNER_LEXICAL_ERROR;
+                return STDERR_INVALID_IDENTIFIER;
             }
 
             token->type = keyword_or_id(buffer.data);
@@ -411,11 +491,11 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             } else {
                 buffer_free(&buffer);
             }
-            return SCANNER_OK;
+            return STDERR_NONE;
         }
 
         buffer_free(&buffer);
-        return SCANNER_LEXICAL_ERROR;
+        return STDERR_INVALID_IDENTIFIER;
     } else if (c == '\\') {
         c = scanner_getchar();
         if (c == 'n') {
@@ -426,30 +506,30 @@ static ScannerErrorCode scanner_read_interpolated_text(Token *token) {
             c = '\t';
         } else if (c != '"' && c != '\\') {
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_ESCAPE;
         }
 
         result = buffer_append(&buffer, (char)c);
         if (result != SCANNER_OK) {
             buffer_free(&buffer);
-            return result;
+            return STDERR_MEMORY_ERROR;
         }
 
         token->type = TOK_STRING_LITERAL;
         token->data.str_val = buffer.data;
-        return SCANNER_OK;
+        return STDERR_NONE;
     }
 
     buffer_free(&buffer);
-    return SCANNER_INVALID_STATE_ERROR;
+    return STDERR_INVALID_STATE;
 }
 
 /**
  * @brief reads the next token using the finite state machine
  * @param[out] token receives the token data on success
- * @return SCANNER_OK on success, otherwise relevant error code 
+ * @return STDERR_NONE on success, otherwise the specific scanner error 
  */
-static ScannerErrorCode scanner_read_token(Token *token) {
+static StderrMessage scanner_read_token(Token *token) {
     if (processing_dot == true) {
         token->type = TOK_DOT;
         token->line = next_line;
@@ -457,7 +537,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         processing_dot = false;
 
-        return SCANNER_OK;
+        return STDERR_NONE;
     }
 
     int c = scanner_getchar();
@@ -472,7 +552,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
         case STATE_START:
             if (c == EOF) {
                 token->type = TOK_EOF;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             if (c == ' ') {
@@ -582,7 +662,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             if (c == '"') {
                 ScannerErrorCode result = buffer_init(&buffer);
                 if (result != SCANNER_OK) {
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_STRING_FIRST_QUOTE;
@@ -592,12 +672,12 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             if (c == '.') {
                 ScannerErrorCode result = buffer_init(&buffer);
                 if (result != SCANNER_OK) {
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_DOT;
                 break;
@@ -606,12 +686,12 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             if (c == '_') {
                 ScannerErrorCode result = buffer_init(&buffer);
                 if (result != SCANNER_OK) {
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_IDENTIFIER_UNDERSCORE;
@@ -621,12 +701,12 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             if (isalpha(c)) {
                 ScannerErrorCode result = buffer_init(&buffer);
                 if (result != SCANNER_OK) {
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_IDENTIFIER;
@@ -641,12 +721,12 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             if (c >= '1' && c <= '9') {
                 ScannerErrorCode result = buffer_init(&buffer);
                 if (result != SCANNER_OK) {
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_INT_DIGITS;
@@ -657,10 +737,10 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 current_interpolation.reading_expression == true) {
                 token->type = TOK_INTERPOLATION_END;
                 current_interpolation.reading_expression = false;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_UNKNOWN_CHARACTER;
 
         // Identifiers
         case STATE_IDENTIFIER:
@@ -680,7 +760,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_IDENTIFIER;
@@ -696,7 +776,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 buffer_free(&buffer);
             }
 
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_IDENTIFIER_UNDERSCORE:
             c = scanner_getchar();
@@ -704,7 +784,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_IDENTIFIER;
@@ -712,26 +792,26 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             }
 
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_IDENTIFIER;
 
         // Integer literals
         case STATE_INT_ZERO: {
             c = scanner_getchar();
             ScannerErrorCode result = buffer_init(&buffer);
             if (result != SCANNER_OK) {
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
             result = buffer_append(&buffer, '0');
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
 
             if (isdigit(c)) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_INT_DIGITS_AFTER_ZERO;
                 break;
@@ -740,7 +820,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_NUMBER_AFTER_DOT;
                 break;
@@ -749,7 +829,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_DOUBLE_EXPONENT;
                 break;
@@ -763,7 +843,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             token->type = TOK_INT_LITERAL;
             token->data.num_int_val = 0;
             buffer_free(&buffer);
-            return SCANNER_OK;
+            return STDERR_NONE;
         }
 
         case STATE_INT_DIGITS:
@@ -772,7 +852,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 c = scanner_getchar();
             }
@@ -784,7 +864,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_NUMBER_AFTER_DOT;
                 break;
@@ -793,7 +873,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_DOUBLE_EXPONENT;
                 break;
@@ -802,7 +882,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             token->type = TOK_INT_LITERAL;
             token->data.num_int_val = strtoll(buffer.data, NULL, 10);
             buffer_free(&buffer);
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_INT_UNDERSCORE:
             c = scanner_getchar();
@@ -813,14 +893,14 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_INT_DIGITS;
                 break;
             }
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_NUMBER;
 
         case STATE_INT_DIGITS_AFTER_ZERO:
             c = scanner_getchar();
@@ -828,7 +908,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 c = scanner_getchar();
@@ -837,7 +917,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_DOUBLE_EXPONENT;
                 break;
@@ -846,7 +926,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_NUMBER_AFTER_DOT;
                 break;
@@ -859,7 +939,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             for (size_t i = 0; i < buffer.length; i++) {
                 if (buffer.data[i] != '0') {
                     buffer_free(&buffer);
-                    return SCANNER_LEXICAL_ERROR;
+                    return STDERR_INVALID_NUMBER;
                 }
             }
 
@@ -868,7 +948,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             token->type = TOK_INT_LITERAL;
             token->data.num_int_val = 0;
             buffer_free(&buffer);
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_INT_UNDERSCORE_AFTER_ZERO:
             c = scanner_getchar();
@@ -879,13 +959,13 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_INT_DIGITS_AFTER_ZERO;
                 break;
             }
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_NUMBER;
 
         // Decimal literals
         case STATE_DOT:
@@ -894,7 +974,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_DOUBLE_DIGITS;
                 break;
@@ -903,7 +983,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
             token->type = TOK_DOT;
             buffer_free(&buffer);
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_NUMBER_AFTER_DOT:
             c = scanner_getchar();
@@ -911,7 +991,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_DOUBLE_DIGITS;
                 break;
@@ -927,13 +1007,13 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 token->data.num_int_val = strtoll(buffer.data, NULL, 10);
                 if (buffer.data[0] == '0' && token->data.num_int_val > 0) {
                     buffer_free(&buffer);
-                    return SCANNER_LEXICAL_ERROR;
+                    return STDERR_INVALID_NUMBER;
                 }
                 buffer_free(&buffer);
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_NUMBER;
 
         case STATE_DOUBLE_DIGITS:
             c = scanner_getchar();
@@ -941,7 +1021,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 c = scanner_getchar();
@@ -956,7 +1036,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_DOUBLE_EXPONENT;
@@ -968,7 +1048,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             token->data.num_float_val = strtod(buffer.data, NULL);
 
             buffer_free(&buffer);
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_DOUBLE_UNDERSCORE:
             c = scanner_getchar();
@@ -979,7 +1059,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_DOUBLE_DIGITS;
@@ -987,7 +1067,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             }
 
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_NUMBER;
 
         case STATE_DOUBLE_EXPONENT:
             c = scanner_getchar();
@@ -995,7 +1075,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_DOUBLE_EXPONENT_SIGN;
@@ -1004,14 +1084,14 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_DOUBLE_EXPONENT_DIGITS;
                 break;
             }
 
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_NUMBER;
 
         case STATE_DOUBLE_EXPONENT_SIGN:
             c = scanner_getchar();
@@ -1019,14 +1099,14 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_DOUBLE_EXPONENT_DIGITS;
                 break;
             }
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_NUMBER;
 
         case STATE_DOUBLE_EXPONENT_DIGITS:
             c = scanner_getchar();
@@ -1034,7 +1114,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 c = scanner_getchar();
@@ -1052,7 +1132,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             token->data.num_float_val = strtod(buffer.data, NULL);
 
             buffer_free(&buffer);
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_DOUBLE_EXPONENT_UNDERSCORE:
             c = scanner_getchar();
@@ -1063,20 +1143,20 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_DOUBLE_EXPONENT_DIGITS;
                 break;
             }
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_NUMBER;
 
         case STATE_DOUBLE_SUFFIX:
             token->type = TOK_DOUBLE_LITERAL;
             token->data.num_float_val = strtod(buffer.data, NULL);
             buffer_free(&buffer);
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         // String literals
         case STATE_STRING_FIRST_QUOTE:
@@ -1089,8 +1169,8 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             if (string_has_interpolated_prefix == true) {
                 scanner_ungetc(c);
 
-                ScannerErrorCode result = interpolation_push();
-                if (result != SCANNER_OK) {
+                StderrMessage result = interpolation_push();
+                if (result != STDERR_NONE) {
                     buffer_free(&buffer);
                     return result;
                 }
@@ -1100,13 +1180,13 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 token->type = TOK_INTERPOLATED_BEGIN;
 
                 buffer_free(&buffer);
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             while (c != '"') {
                 if (c == EOF || c == '\n') {
                     buffer_free(&buffer);
-                    return SCANNER_LEXICAL_ERROR;
+                    return STDERR_OPEN_STRING;
                 }
                 if (c == '\\') {
                     state = STATE_STRING_ESCAPE;
@@ -1116,7 +1196,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 c = scanner_getchar();
@@ -1127,14 +1207,14 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
             token->type = TOK_STRING_LITERAL;
             token->data.str_val = buffer.data;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_STRING_SECOND_QUOTE:
             c = scanner_getchar();
             if (c == '"') {
                 if (string_has_interpolated_prefix == true) {
-                    ScannerErrorCode result = interpolation_push();
-                    if (result != SCANNER_OK) {
+                    StderrMessage result = interpolation_push();
+                    if (result != STDERR_NONE) {
                         buffer_free(&buffer);
                         return result;
                     }
@@ -1144,7 +1224,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                     token->type = TOK_INTERPOLATED_BEGIN;
 
                     buffer_free(&buffer);
-                    return SCANNER_OK;
+                    return STDERR_NONE;
                 }
                 state = STATE_STRING_MULTILINE_BODY;
                 break;
@@ -1153,14 +1233,14 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             scanner_ungetc(c);
             token->type = TOK_STRING_LITERAL;
             token->data.str_val = buffer.data;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_STRING_BODY:
             c = scanner_getchar();
             while (c != '"') {
                 if (c == EOF || c == '\n') {
                     buffer_free(&buffer);
-                    return SCANNER_LEXICAL_ERROR;
+                    return STDERR_OPEN_STRING;
                 }
                 if (c == '\\') {
                     state = STATE_STRING_ESCAPE;
@@ -1170,7 +1250,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 c = scanner_getchar();
@@ -1181,7 +1261,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
             token->type = TOK_STRING_LITERAL;
             token->data.str_val = buffer.data;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_STRING_ESCAPE:
             c = scanner_getchar();
@@ -1189,7 +1269,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 state = STATE_STRING_BODY;
@@ -1199,7 +1279,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_STRING_BODY;
                 break;
@@ -1208,7 +1288,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_STRING_BODY;
                 break;
@@ -1217,26 +1297,26 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 state = STATE_STRING_BODY;
                 break;
             }
             buffer_free(&buffer);
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_INVALID_ESCAPE;
 
         case STATE_STRING_MULTILINE_BODY:
             c = scanner_getchar();
             while (c != '"') {
                 if (c == EOF) {
                     buffer_free(&buffer);
-                    return SCANNER_LEXICAL_ERROR;
+                    return STDERR_OPEN_STRING;
                 }
 
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
 
                 c = scanner_getchar();
@@ -1248,7 +1328,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             c = scanner_getchar();
             if (c == EOF) {
                 buffer_free(&buffer);
-                return SCANNER_LEXICAL_ERROR;
+                return STDERR_OPEN_STRING;
             }
             if (c == '"') {
                 state = STATE_STRING_MULTILINE_SECOND_QUOTE;
@@ -1259,7 +1339,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             ScannerErrorCode result = buffer_append(&buffer, '"');
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
 
             state = STATE_STRING_MULTILINE_BODY;
@@ -1270,7 +1350,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             c = scanner_getchar();
             if (c == EOF) {
                 buffer_free(&buffer);
-                return SCANNER_LEXICAL_ERROR;
+                return STDERR_OPEN_STRING;
             }
             if (c == '"') {
                 state = STATE_STRING_MULTILINE_CLOSING_QUOTES;
@@ -1280,13 +1360,13 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             ScannerErrorCode result = buffer_append(&buffer, '"');
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
 
             result = buffer_append(&buffer, '"');
             if (result != SCANNER_OK) {
                 buffer_free(&buffer);
-                return result;
+                return STDERR_MEMORY_ERROR;
             }
 
             scanner_ungetc(c);
@@ -1301,7 +1381,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 ScannerErrorCode result = buffer_append(&buffer, (char)c);
                 if (result != SCANNER_OK) {
                     buffer_free(&buffer);
-                    return result;
+                    return STDERR_MEMORY_ERROR;
                 }
                 c = scanner_getchar();
             }
@@ -1310,20 +1390,20 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
             token->type = TOK_STRING_LITERAL;
             token->data.str_val = buffer.data;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         // Operators and separators
         case STATE_PLUS:
             token->type = TOK_PLUS;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_MINUS:
             token->type = TOK_MINUS;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_MULTIPLY:
             token->type = TOK_MULTIPLY;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_SLASH:
             c = scanner_getchar();
@@ -1333,6 +1413,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             }
             if (c == '*') {
                 state = STATE_MULTI_LINE_COMMENT;
+                reading_indentation = false;
                 comments_depth = 1;
                 comment_has_lf = false;
                 break;
@@ -1341,105 +1422,105 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             scanner_ungetc(c);
 
             token->type = TOK_DIVISION;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_LESS:
             c = scanner_getchar();
             if (c == '=') {
                 token->type = TOK_LESS_OR_EQUAL_THAN;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             if (c == '-') {
                 token->type = TOK_CONTROL_ARROW;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             scanner_ungetc(c);
 
             token->type = TOK_LESS_THAN;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_GREATER:
             c = scanner_getchar();
             if (c == '=') {
                 token->type = TOK_GREATER_OR_EQUAL_THAN;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             scanner_ungetc(c);
 
             token->type = TOK_GREATER_THAN;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_EQUAL_SIGN:
             c = scanner_getchar();
             if (c == '=') {
                 token->type = TOK_EQUAL;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             scanner_ungetc(c);
 
             token->type = TOK_ASSIGN;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_EXCLAMATION_MARK:
             c = scanner_getchar();
             if (c == '=') {
                 token->type = TOK_NOT_EQUAL;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             scanner_ungetc(c);
 
             token->type = TOK_NOT;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_AMPERSAND:
             c = scanner_getchar();
             if (c == '&') {
                 token->type = TOK_AND;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_UNKNOWN_CHARACTER;
 
         case STATE_VERTICAL_BAR:
             c = scanner_getchar();
             if (c == '|') {
                 token->type = TOK_OR;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
-            return SCANNER_LEXICAL_ERROR;
+            return STDERR_UNKNOWN_CHARACTER;
 
         case STATE_LEFT_PARENTHESES:
             token->type = TOK_LEFT_PARENTHESIS;
             parentheses_depth++;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_RIGHT_PARENTHESES:
             token->type = TOK_RIGHT_PARENTHESIS;
             if (parentheses_depth > 0) {
                 parentheses_depth--;
             }
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_COMMA:
             token->type = TOK_COMMA;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_COLON:
             token->type = TOK_COLON;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_SEMICOLON:
             token->type = TOK_SEMICOLON;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         case STATE_AT:
             token->type = TOK_AT;
-            return SCANNER_OK;
+            return STDERR_NONE;
 
         // Comments
         case STATE_ONE_LINE_COMMENT:
@@ -1450,7 +1531,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
             if (c == EOF) {
                 token->type = TOK_EOF;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             state = STATE_NEW_LINE;
@@ -1463,7 +1544,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                     c = scanner_getchar();
                 }
                 if (c == EOF) {
-                    return SCANNER_LEXICAL_ERROR;
+                    return STDERR_OPEN_COMMENT;
                 }
                 if (c == '\n') {
                     comment_has_lf = true;
@@ -1473,7 +1554,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 if (c == '/') {
                     c = scanner_getchar();
                     if (c == EOF) {
-                        return SCANNER_LEXICAL_ERROR;
+                        return STDERR_OPEN_COMMENT;
                     }
                     if (c == '*') {
                         comments_depth++;
@@ -1484,7 +1565,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 if (c == '*') {
                     c = scanner_getchar();
                     if (c == EOF) {
-                        return SCANNER_LEXICAL_ERROR;
+                        return STDERR_OPEN_COMMENT;
                     }
                     if (c == '/') {
                         comments_depth--;
@@ -1509,13 +1590,13 @@ static ScannerErrorCode scanner_read_token(Token *token) {
                 }
                 if (c == EOF) {
                     token->type = TOK_EOF;
-                    return SCANNER_OK;
+                    return STDERR_NONE;
                 }
-                return SCANNER_LEXICAL_ERROR;
+                return STDERR_TOKEN_AFTER_COMMENT;
             }
             if (c == EOF) {
                 token->type = TOK_EOF;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             state = STATE_START;
@@ -1531,13 +1612,13 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             if (parentheses_depth == 0 && line_has_token) {
                 token->type = TOK_EOL;
                 line_has_token = false;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             c = scanner_getchar();
             if (c == EOF) {
                 token->type = TOK_EOF;
-                return SCANNER_OK;
+                return STDERR_NONE;
             }
 
             state = STATE_START;
@@ -1545,7 +1626,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
 
         default:
             buffer_free(&buffer);
-            return SCANNER_INVALID_STATE_ERROR;
+            return STDERR_INVALID_STATE;
         }
     }
 }
@@ -1555,7 +1636,7 @@ ScannerErrorCode scanner_get_token(Token *token) {
     token->indent = 0;
     token->lf_before = false;
 
-    ScannerErrorCode result;
+    StderrMessage result;
     if (current_interpolation.mode == INTERPOLATED_MODE_NONE || current_interpolation.reading_expression == true) {
         result = scanner_read_token(token);
     } else {
@@ -1563,22 +1644,22 @@ ScannerErrorCode scanner_get_token(Token *token) {
     }
 
     if (ferror(stdin) != 0) {
-        if (result == SCANNER_OK && (token->type == TOK_ID || token->type == TOK_STRING_LITERAL)) {
+        if (result == STDERR_NONE && (token->type == TOK_ID || token->type == TOK_STRING_LITERAL)) {
             free(token->data.str_val);
             token->data.str_val = NULL;
         }
         interpolation_free();
-        return SCANNER_READ_ERROR;
+        return scanner_error_message(STDERR_STDIN_ERROR);
     }
 
-    if (result != SCANNER_OK) {
+    if (result != STDERR_NONE) {
         interpolation_free();
-        return result;
+        return scanner_error_message(result);
     }
 
     if (token->type == TOK_EOF && current_interpolation.reading_expression == true) {
         interpolation_free();
-        return SCANNER_LEXICAL_ERROR;
+        return scanner_error_message(STDERR_OPEN_INTERPOLATION);
     }
 
     if (token->type == TOK_EOL || token->type == TOK_EOF) {
@@ -1593,7 +1674,7 @@ ScannerErrorCode scanner_get_token(Token *token) {
             token->data.str_val = NULL;
         }
         interpolation_free();
-        return SCANNER_LEXICAL_ERROR;
+        return scanner_error_message(STDERR_TAB_IN_INDENT);
     }
 
     token->lf_before = trailing_comma_allowed;
