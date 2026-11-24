@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// global symtable pointer
 static stab *sem_st = NULL;
 
 typedef struct fn_chain {
@@ -21,22 +22,25 @@ typedef struct fn_chain {
 
 static const fn_chain *checking = NULL;
 
-static bool is_numeric(DataType t) {
-    return t == TYPE_INT || t == TYPE_DOUBLE;
+// Returns true if type is INT or DOUBLE.
+static bool is_numeric(DataType type) {
+    return type == TYPE_INT || type == TYPE_DOUBLE;
 }
 
-static bool is_assignable(DataType target, DataType src) {
-    if (target == src || target == TYPE_ANY) {
+// Returns whether source can be assigned to target.
+static bool is_assignable(DataType target, DataType source) {
+    if (target == source || target == TYPE_ANY) {
         return true;
     }
-    return target == TYPE_DOUBLE && src == TYPE_INT;
+    return target == TYPE_DOUBLE && source == TYPE_INT;
 }
 
+// Returns whether fn has expicit return type TYPE_UNIT.
 static bool is_explicit_unit(const stab_func *fn) {
     return fn->ret_explicit && fn->ret_type == TYPE_UNIT;
 }
 
-// prints error message to stderr and returns sem. error code
+// Prints error message to stderr and returns semantic error code.
 static sem_res_t error(sem_res_t code, unsigned int line, const char *msg) {
     fprintf(stderr, "Semantic error (%d)", code);
     if (line != 0) {
@@ -46,7 +50,7 @@ static sem_res_t error(sem_res_t code, unsigned int line, const char *msg) {
     return code;
 }
 
-// error code convertor (from stab to sem)
+// Converts symtable error codes to semantic error codes and returns the result.
 static sem_res_t stab_res_convert(stab_res_t res) {
     switch (res) {
     case ST_OK:
@@ -107,6 +111,9 @@ static sem_res_t build_param_list(const AstNode *function, stab_param_list *out)
     return SEM_OK;
 }
 
+// Declares function in the global symtable, builds parameter list.
+// If function is marked as main, checks signature and registers it.
+// Returns SEM_OK on sucess, otherwise semantic error code.
 static sem_res_t declare_function(AstNode *fn) {
     assert(fn->node_kind == AST_FUNCTION);
 
