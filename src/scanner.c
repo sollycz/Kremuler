@@ -1333,6 +1333,7 @@ static ScannerErrorCode scanner_read_token(Token *token) {
             }
             if (c == '*') {
                 state = STATE_MULTI_LINE_COMMENT;
+                reading_indentation = false;
                 comments_depth = 1;
                 comment_has_lf = false;
                 break;
