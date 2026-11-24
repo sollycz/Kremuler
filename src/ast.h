@@ -80,9 +80,9 @@ struct AstNode {
         struct {
             char *name;
             AstNodeList parameters; // all parameters from all lists, flattened
-            size_t *list_sizes;
-            size_t list_count;
-            DataType return_type; // also TYPE_UNKNOWN if not explicitly written
+            size_t *list_sizes;     // number of parameters in each list
+            size_t list_count;      // always set by the parser: 0 = no parentheses ("def answer"), "def f()" = 1
+            DataType return_type;   // also TYPE_UNKNOWN if not explicitly written
             AstNode *block;
             AstNode *receiver; // AST_PARAMETER of the extended value, NULL for a normal function (EXTKW)
             bool is_main_func;
@@ -163,9 +163,10 @@ struct AstNode {
 
         struct {
             char *name;
-            AstNodeList args;
-            size_t *arg_list_sizes;
-            size_t arg_list_count;
+            // x.plus(1)(2): args = [x, 1, 2], arg_list_sizes = [1, 1], arg_list_count = 2, is_member = true
+            AstNodeList args;       // flattened, the receiver is args[0] if is_member
+            size_t *arg_list_sizes; // number of arguments in each list, the receiver is not counted
+            size_t arg_list_count;  // always set by the parser: 0 = no parentheses ("x.twice")
             bool is_member;
         } call;
     } as;
