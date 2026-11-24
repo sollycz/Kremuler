@@ -368,32 +368,96 @@ static sem_res_t check_binary(AstNode *node) {
     }
 }
 
-// Checks a function call and infers return type for normal function.
-// Recursive call require explicit return type.
-// Returns SEM_OK if successful, otherwise error code.
-static sem_res_t check_call(AstNode *node) {
-    stab_func *f = stab_find_func(sem_st, node->as.call.name, NULL);
-    if (!f) {
-        return error(SEM_UNDEFINED, node->line, "undefined function");
-    }
-
-    const stab_param_list *params = &f->param_lists[0];
+// Check arguments of a call gainst parameter list of the callee.
+static sem_res_t check_call_args(AstNode *node, const stab_func *f) {
     const AstNodeList *args = &node->as.call.args;
+    size_t arg_list_count = node->as.call.arg_list_count;
+    const size_t *arg_list_sizes = node->as.call.arg_list_sizes;
 
-    if (args->count != params->count) {
-        return error(SEM_BAD_CALL, node->line, "wrong number of arguments");
+    // index of the first real argument
+    size_t first_arg;
+    if (node->as.call.is_member) {
+        first_arg = 1;
+    } else {
+        first_arg = 0;
     }
 
-    // left to right
-    for (size_t i = 0; i < args->count; i++) {
-        sem_res_t res = check_expr(args->items[i]);
+    // x vs x()
+    if (arg_list_count != f->list_count) {
+        return error(SEM_BAD_CALL, node->line, "wrong number of argument lists");
+    }
+
+    size_t arg_idx = first_arg;
+
+    for (size_t list_idx = 0; list_idx < arg_list_count; list_idx++) {
+        const stab_param_list *params = &f->param_lists[list_idx];
+
+        if (arg_list_sizes[list_idx] != params->count) {
+            return error(SEM_BAD_CALL, node->line, "wrong number of arguments");
+        }
+
+        // left to right
+        for (size_t i = 0; i < params->count; i++) {
+            AstNode *arg = args->items[arg_idx];
+
+            sem_res_t res = check_expr(arg);
+            if (res != SEM_OK) {
+                return res;
+            }
+
+            if (!is_assignable(params->params[i].type, arg->type)) {
+                return error(SEM_BAD_CALL, arg->line, "wrong type of argument");
+            }
+
+            arg_idx++;
+        }
+    }
+
+    assert(arg_idx == args->count);
+
+    return SEM_OK;
+}
+
+// Find the function call by call.
+static sem_res_t find_callee(AstNode *node, stab_func **out) {
+    const DataType *extends = NULL;
+
+    if (node->as.call.is_member) {
+        AstNode *receiver = node->as.call.args.items[0];
+
+        sem_res_t res = check_expr(receiver);
         if (res != SEM_OK) {
             return res;
         }
 
-        if (!is_assignable(params->params[i].type, args->items[i]->type)) {
-            return error(SEM_BAD_CALL, node->line, "wrong type of argument");
+        // symtable falls back to TYPE_ANY
+        extends = &receiver->type;
+    }
+
+    *out = stab_find_func(sem_st, node->as.call.name, extends);
+    if (!*out) {
+        if (node->as.call.is_member) {
+            return error(SEM_UNDEFINED, node->line, "undefined method for this type");
         }
+        return error(SEM_UNDEFINED, node->line, "undefined function");
+    }
+
+    return SEM_OK;
+}
+
+// Checks a function call and infers return type for normal function.
+// Recursive call require explicit return type.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_call(AstNode *node) {
+    stab_func *f;
+    sem_res_t res = find_callee(node, &f);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    res = check_call_args(node, f);
+    if (res != SEM_OK) {
+        return res;
     }
 
     // callee is being checked = recursion
