@@ -182,6 +182,7 @@ static ParseResult expect(Parser *p, TokenType type) {
 // declaration
 static ParseResult parse_block(Parser *p, AstNode **out);
 static ParseResult parse_if(Parser *p, AstNode **out);
+static ParseResult parse_statement_simple(Parser *p, AstNode **out);
 
 // <type> -> TOK_KW_INT | TOK_KW_STRING | TOK_KW_UNIT | TOK_KW_DOUBLE | TOK_KW_BOOLEAN
 static ParseResult parse_type(Parser *p, DataType *type) {
@@ -521,10 +522,12 @@ static ParseResult parse_while(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <else_next> -> TOK_EOL <block> | <if>
-static ParseResult parse_else_next(Parser *p, AstNode **out) {
+// parses the body of an if branch: an indented block, or one statement on the same line (CONTROL)
+// <branch> -> TOK_EOL <block> | <statement_simple>
+static ParseResult parse_branch(Parser *p, AstNode **out) {
     ParseResult result;
 
+    // TOK_EOL <block>
     if (p->current.type == TOK_EOL) {
         result = next_token(p);
         if (result != PARSE_OK) {
@@ -534,8 +537,35 @@ static ParseResult parse_else_next(Parser *p, AstNode **out) {
         return parse_block(p, out);
     }
 
+    // one statement on the same line, wrapped into a block
+    AstNode *block = ast_new(AST_BLOCK, p->current.line);
+    if (block == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    AstNode *statement = NULL;
+    result = parse_statement_simple(p, &statement);
+    if (result != PARSE_OK) {
+        ast_free(block);
+        return result;
+    }
+
+    if (ast_list_push(&block->as.block.statements, statement) == false) {
+        ast_free(statement);
+        ast_free(block);
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    *out = block;
+    return PARSE_OK;
+}
+
+// <else_next> -> <branch> | <if>
+static ParseResult parse_else_next(Parser *p, AstNode **out) {
+    ParseResult result;
+
     if (p->current.type != TOK_KW_IF) {
-        return PARSE_SYNTAX_ERROR;
+        return parse_branch(p, out);
     }
 
     AstNode *block = ast_new(AST_BLOCK, p->current.line);
@@ -578,7 +608,7 @@ static ParseResult parse_else(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <if> -> TOK_KW_IF <expression> TOK_KW_THEN TOK_EOL <block> <else>
+// <if> -> TOK_KW_IF <expression> TOK_KW_THEN <branch> <else>
 static ParseResult parse_if(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -608,18 +638,29 @@ static ParseResult parse_if(Parser *p, AstNode **out) {
         return result;
     }
 
-    // TOK_EOL
-    result = expect(p, TOK_EOL);
+    // then branch: a block or one statement on the same line
+    result = parse_branch(p, &node->as.if_statement.then_block);
     if (result != PARSE_OK) {
         ast_free(node);
         return result;
     }
 
-    // <block>
-    result = parse_block(p, &node->as.if_statement.then_block);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
+    // after a one line then branch, the else may be on the next line, aligned with the if
+    if (p->current.type == TOK_EOL) {
+        TokenType next;
+        result = lookahead_token(p, &next);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+
+        if (next == TOK_KW_ELSE && p->lookahead.indent == p->indent_stack[p->indent_count - 1]) {
+            result = next_token(p);
+            if (result != PARSE_OK) {
+                ast_free(node);
+                return result;
+            }
+        }
     }
 
     // <else>
@@ -633,7 +674,7 @@ static ParseResult parse_if(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <statement_simple> -> <variable> | <assign> | <return> | <expression>
+// <statement_simple> -> <variable> | <assign> | <return> | <expression> | <if>
 static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -661,24 +702,24 @@ static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
     }
 }
 
-// <statement> -> <statement_simple> <statement_end> | <statement_with_block>
+// <statement> -> <statement_simple> <statement_end> | <if> <statement_end> | <while>
 static ParseResult parse_statement(Parser *p, AstNode **out) {
-    switch (p->current.type) {
-    case TOK_KW_WHILE:
+    if (p->current.type == TOK_KW_WHILE) {
         return parse_while(p, out);
-    case TOK_KW_IF:
-        return parse_if(p, out);
-    default:
-        break;
     }
 
+    // an if that ends with a one line branch needs a statement end, one that ends with a block does not (CONTROL)
     ParseResult result;
-    result = parse_statement_simple(p, out);
+    if (p->current.type == TOK_KW_IF) {
+        result = parse_if(p, out);
+    } else {
+        result = parse_statement_simple(p, out);
+    }
     if (result != PARSE_OK) {
         return result;
     }
 
-    // <statement_end> -> TOK_EOL | TOK_SEMICOLON | TOK_SEMICOLON TOK_EOL
+    // <statement_end> -> TOK_EOL | TOK_SEMICOLON | TOK_SEMICOLON TOK_EOL | epsilon
     if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
         bool was_semicolon = (p->current.type == TOK_SEMICOLON);
 
