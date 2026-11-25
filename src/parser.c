@@ -70,6 +70,9 @@ void parser_destroy(Parser *p) {
 }
 
 ParseResult next_token(Parser *p) {
+    // remembering the type of the previous token, so a statement that ends with a block (DEDENT) does not need
+    // an EOL after it
+    p->previous_type = p->current.type;
     token_free(&p->current);
 
     // if we have a stored lookahead token, use that instead of asking the scanner for a new one
@@ -179,6 +182,49 @@ static ParseResult expect(Parser *p, TokenType type) {
 // declaration
 static ParseResult parse_block(Parser *p, AstNode **out);
 static ParseResult parse_if(Parser *p, AstNode **out);
+static ParseResult parse_statement_simple(Parser *p, AstNode **out);
+
+// parses an if used as a value, its else branch is required (CONTROL)
+ParseResult parse_if_expression(Parser *p, AstNode **out) {
+    AstNode *node = NULL;
+    ParseResult result = parse_if(p, &node);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // every if in an "else if" chain needs its own else
+    AstNode *current = node;
+    while (current != NULL) {
+        AstNode *else_block = current->as.if_statement.else_block;
+        if (else_block == NULL) {
+            ast_free(node);
+            return PARSE_SYNTAX_ERROR;
+        }
+
+        // "else if" is stored as a block with the nested if as its only statement
+        AstNodeList *statements = &else_block->as.block.statements;
+        if (statements->count == 1 && statements->items[0]->node_kind == AST_IF) {
+            current = statements->items[0];
+        } else {
+            current = NULL;
+        }
+    }
+
+    *out = node;
+    return PARSE_OK;
+}
+
+// parses an if expression or leaves it as an expression (CONTROL)
+// <value> -> <if_expression> | <expression>
+// <if_expression> -> TOK_KW_IF <expression> TOK_KW_THEN <branch> TOK_KW_ELSE <else_expression>
+// <else_expression> -> <if_expression> | <branch>
+static ParseResult parse_value(Parser *p, AstNode **out) {
+    if (p->current.type == TOK_KW_IF) {
+        return parse_if_expression(p, out);
+    }
+
+    return parse_expression(p, out);
+}
 
 // <type> -> TOK_KW_INT | TOK_KW_STRING | TOK_KW_UNIT | TOK_KW_DOUBLE | TOK_KW_BOOLEAN
 static ParseResult parse_type(Parser *p, DataType *type) {
@@ -328,7 +374,7 @@ static ParseResult parse_parameters(Parser *p, AstNodeList *parameters) {
     return PARSE_OK;
 }
 
-// <variable> -> <variable_type> TOK_ID <optional_type> TOK_ASSIGN <expression>
+// <variable> -> <variable_type> TOK_ID <optional_type> TOK_ASSIGN <value>
 // <variable_type> -> TOK_KW_VAR | TOK_KW_VAL
 static ParseResult parse_variable(Parser *p, AstNode **out) {
     ParseResult result;
@@ -375,7 +421,7 @@ static ParseResult parse_variable(Parser *p, AstNode **out) {
     }
 
     // <expression>
-    result = parse_expression(p, &node->as.variable_definition.value);
+    result = parse_value(p, &node->as.variable_definition.value);
     if (result != PARSE_OK) {
         ast_free(node);
         return result;
@@ -385,7 +431,7 @@ static ParseResult parse_variable(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <assign> -> TOK_ID TOK_ASSIGN <expression>
+// <assign> -> TOK_ID TOK_ASSIGN <value>
 static ParseResult parse_assign(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -415,7 +461,7 @@ static ParseResult parse_assign(Parser *p, AstNode **out) {
     }
 
     // <expression>
-    result = parse_expression(p, &node->as.assign.value);
+    result = parse_value(p, &node->as.assign.value);
     if (result != PARSE_OK) {
         ast_free(node);
         return result;
@@ -425,7 +471,8 @@ static ParseResult parse_assign(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <return> -> TOK_KW_RETURN <optional_expression>
+// <return> -> TOK_KW_RETURN <optional_value>
+// <optional_value> -> <value> | epsilon
 static ParseResult parse_return(Parser *p, AstNode **out) {
     ParseResult result;
     result = expect(p, TOK_KW_RETURN);
@@ -438,10 +485,10 @@ static ParseResult parse_return(Parser *p, AstNode **out) {
         return PARSE_INTERNAL_ERROR;
     }
 
-    if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
+    if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON || p->current.type == TOK_KW_ELSE) {
         node->as.return_statement.value = NULL;
     } else {
-        result = parse_expression(p, &node->as.return_statement.value);
+        result = parse_value(p, &node->as.return_statement.value);
         if (result != PARSE_OK) {
             ast_free(node);
             return result;
@@ -460,7 +507,7 @@ static ParseResult parse_expression_statement(Parser *p, AstNode **out) {
         return PARSE_INTERNAL_ERROR;
     }
 
-    result = parse_expression(p, &node->as.expression_statement.expression);
+    result = parse_value(p, &node->as.expression_statement.expression);
     if (result != PARSE_OK) {
         ast_free(node);
         return result;
@@ -518,10 +565,12 @@ static ParseResult parse_while(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <else_next> -> TOK_EOL <block> | <if>
-static ParseResult parse_else_next(Parser *p, AstNode **out) {
+// parses the body of an if branch: an indented block, or one statement on the same line (CONTROL)
+// <branch> -> TOK_EOL <block> | <statement_simple>
+static ParseResult parse_branch(Parser *p, AstNode **out) {
     ParseResult result;
 
+    // TOK_EOL <block>
     if (p->current.type == TOK_EOL) {
         result = next_token(p);
         if (result != PARSE_OK) {
@@ -531,8 +580,35 @@ static ParseResult parse_else_next(Parser *p, AstNode **out) {
         return parse_block(p, out);
     }
 
+    // one statement on the same line, wrapped into a block
+    AstNode *block = ast_new(AST_BLOCK, p->current.line);
+    if (block == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    AstNode *statement = NULL;
+    result = parse_statement_simple(p, &statement);
+    if (result != PARSE_OK) {
+        ast_free(block);
+        return result;
+    }
+
+    if (ast_list_push(&block->as.block.statements, statement) == false) {
+        ast_free(statement);
+        ast_free(block);
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    *out = block;
+    return PARSE_OK;
+}
+
+// <else_next> -> <branch> | <if>
+static ParseResult parse_else_next(Parser *p, AstNode **out) {
+    ParseResult result;
+
     if (p->current.type != TOK_KW_IF) {
-        return PARSE_SYNTAX_ERROR;
+        return parse_branch(p, out);
     }
 
     AstNode *block = ast_new(AST_BLOCK, p->current.line);
@@ -575,7 +651,7 @@ static ParseResult parse_else(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <if> -> TOK_KW_IF <expression> TOK_KW_THEN TOK_EOL <block> <else>
+// <if> -> TOK_KW_IF <expression> TOK_KW_THEN <branch> <else>
 static ParseResult parse_if(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -605,18 +681,29 @@ static ParseResult parse_if(Parser *p, AstNode **out) {
         return result;
     }
 
-    // TOK_EOL
-    result = expect(p, TOK_EOL);
+    // then branch: a block or one statement on the same line
+    result = parse_branch(p, &node->as.if_statement.then_block);
     if (result != PARSE_OK) {
         ast_free(node);
         return result;
     }
 
-    // <block>
-    result = parse_block(p, &node->as.if_statement.then_block);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
+    // after a one line then branch, the else may be on the next line, aligned with the if
+    if (p->current.type == TOK_EOL) {
+        TokenType next;
+        result = lookahead_token(p, &next);
+        if (result != PARSE_OK) {
+            ast_free(node);
+            return result;
+        }
+
+        if (next == TOK_KW_ELSE && p->lookahead.indent == p->indent_stack[p->indent_count - 1]) {
+            result = next_token(p);
+            if (result != PARSE_OK) {
+                ast_free(node);
+                return result;
+            }
+        }
     }
 
     // <else>
@@ -630,7 +717,171 @@ static ParseResult parse_if(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <statement_simple> -> <variable> | <assign> | <return> | <expression>
+// checks that the current token is the identifier with the given name (to, until, by are not keywords)
+static bool is_identifier(Parser *p, const char *name) {
+    return p->current.type == TOK_ID && strcmp(p->current.data.str_val, name) == 0;
+}
+
+// parses the generator and guards of a for loop
+// (on error the caller needs to free the node)
+// <for_generator> -> TOK_ID TOK_CONTROL_ARROW <expression> <to_or_until> <expression> <for_optional_by>
+// <for_header> -> <for_generator> <for_guard_list>
+// <for_header_multiline> -> TOK_EOL TOK_INDENT <for_generator> TOK_EOL <for_guard_list_multiline> TOK_DEDENT
+static ParseResult parse_for_header(Parser *p, AstNode *node, bool multiline) {
+    ParseResult result;
+
+    // TOK_ID (the control variable)
+    if (p->current.type != TOK_ID) {
+        return PARSE_SYNTAX_ERROR;
+    }
+    node->as.for_statement.var_name = p->current.data.str_val;
+    p->current.data.str_val = NULL;
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // TOK_CONTROL_ARROW
+    result = expect(p, TOK_CONTROL_ARROW);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // from
+    result = parse_expression(p, &node->as.for_statement.from);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // <to_or_until>
+    if (is_identifier(p, "to")) {
+        node->as.for_statement.inclusive = true;
+    } else if (is_identifier(p, "until")) {
+        node->as.for_statement.inclusive = false;
+    } else {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    result = parse_expression(p, &node->as.for_statement.to);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // <for_optional_by>
+    if (is_identifier(p, "by")) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        result = parse_expression(p, &node->as.for_statement.step);
+        if (result != PARSE_OK) {
+            return result;
+        }
+    }
+
+    // <for_guard_list>
+    while (true) {
+        // multi line: the generator and every guard are on their own line
+        if (multiline) {
+            result = expect(p, TOK_EOL);
+            if (result != PARSE_OK) {
+                return result;
+            }
+        }
+
+        if (p->current.type != TOK_KW_IF) {
+            break;
+        }
+
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        AstNode *guard = NULL;
+        result = parse_expression(p, &guard);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        if (ast_list_push(&node->as.for_statement.guards, guard) == false) {
+            ast_free(guard);
+            return PARSE_INTERNAL_ERROR;
+        }
+    }
+
+    return PARSE_OK;
+}
+
+// <for> -> TOK_KW_FOR <for_start> TOK_KW_DO <branch>
+// <for_start> -> <for_header> | <for_header_multiline>
+// <for_optional_by> -> TOK_ID"by" <expression> | epsilon
+// <for_guard_list> -> TOK_KW_IF <expression> <for_guard_list> | epsilon
+// <for_guard_list_multiline> -> TOK_KW_IF <expression> TOK_EOL <for_guard_list_multiline> | epsilon
+// <to_or_until> -> TOK_ID"to" | TOK_ID"until"
+static ParseResult parse_for(Parser *p, AstNode **out) {
+    ParseResult result;
+
+    AstNode *node = ast_new(AST_FOR, p->current.line);
+    if (node == NULL) {
+        return PARSE_INTERNAL_ERROR;
+    }
+
+    // TOK_KW_FOR
+    result = expect(p, TOK_KW_FOR);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    if (p->current.type == TOK_EOL) {
+        // multi line header: TOK_EOL TOK_INDENT <header lines> TOK_DEDENT, then do aligned with for
+        result = next_token(p);
+        if (result == PARSE_OK) {
+            result = expect(p, TOK_INDENT);
+        }
+        if (result == PARSE_OK) {
+            result = parse_for_header(p, node, true);
+        }
+        if (result == PARSE_OK) {
+            result = expect(p, TOK_DEDENT);
+        }
+    } else {
+        // one line header
+        result = parse_for_header(p, node, false);
+    }
+
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // TOK_KW_DO
+    result = expect(p, TOK_KW_DO);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    // body: a block or one statement on the same line
+    result = parse_branch(p, &node->as.for_statement.block);
+    if (result != PARSE_OK) {
+        ast_free(node);
+        return result;
+    }
+
+    *out = node;
+    return PARSE_OK;
+}
+
+// <statement_simple> -> <variable> | <assign> | <return> | <expression> | <if>
 static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -641,6 +892,10 @@ static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
         return parse_variable(p, out);
     case TOK_KW_RETURN:
         return parse_return(p, out);
+    case TOK_KW_FOR:
+        return parse_for(p, out);
+    case TOK_KW_IF:
+        return parse_if(p, out);
     case TOK_ID: {
         TokenType next;
         result = lookahead_token(p, &next);
@@ -658,24 +913,24 @@ static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
     }
 }
 
-// <statement> -> <statement_simple> <statement_end> | <statement_with_block>
+// <statement> -> <statement_simple> <statement_end> | <while>
 static ParseResult parse_statement(Parser *p, AstNode **out) {
-    switch (p->current.type) {
-    case TOK_KW_WHILE:
+    if (p->current.type == TOK_KW_WHILE) {
         return parse_while(p, out);
-    case TOK_KW_IF:
-        return parse_if(p, out);
-    default:
-        break;
     }
 
+    // an if that ends with a one line branch needs a statement end, one that ends with a block does not (CONTROL)
     ParseResult result;
-    result = parse_statement_simple(p, out);
+    if (p->current.type == TOK_KW_IF) {
+        result = parse_if(p, out);
+    } else {
+        result = parse_statement_simple(p, out);
+    }
     if (result != PARSE_OK) {
         return result;
     }
 
-    // <statement_end> -> TOK_EOL | TOK_SEMICOLON | TOK_SEMICOLON TOK_EOL
+    // <statement_end> -> TOK_EOL | TOK_SEMICOLON | TOK_SEMICOLON TOK_EOL | epsilon
     if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
         bool was_semicolon = (p->current.type == TOK_SEMICOLON);
 
@@ -693,7 +948,8 @@ static ParseResult parse_statement(Parser *p, AstNode **out) {
                 return result;
             }
         }
-    } else {
+    } else if (p->previous_type != TOK_DEDENT) {
+        // a statement that ended with a block (e.g. "val x = if ... else" + block) doesnt need a TOK_EOL (CONTROL)
         ast_free(*out);
         return PARSE_SYNTAX_ERROR;
     }
@@ -746,7 +1002,8 @@ static ParseResult parse_block(Parser *p, AstNode **out) {
     return PARSE_OK;
 }
 
-// <function_body> -> <expression> TOK_EOL | TOK_EOL <block>
+// <function_body> -> <value> <function_body_end> | TOK_EOL <block>
+// <function_body_end> -> TOK_EOL | epsilon
 static ParseResult parse_function_body(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -780,16 +1037,22 @@ static ParseResult parse_function_body(Parser *p, AstNode **out) {
         return PARSE_INTERNAL_ERROR;
     }
 
-    result = parse_expression(p, &ret->as.return_statement.value);
+    result = parse_value(p, &ret->as.return_statement.value);
     if (result != PARSE_OK) {
         ast_free(block);
         return result;
     }
 
-    result = expect(p, TOK_EOL);
-    if (result != PARSE_OK) {
+    // TOK_EOL, not needed if the value ended with a block (CONTROL)
+    if (p->current.type == TOK_EOL) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            ast_free(block);
+            return result;
+        }
+    } else if (p->previous_type != TOK_DEDENT) {
         ast_free(block);
-        return result;
+        return PARSE_SYNTAX_ERROR;
     }
 
     *out = block;

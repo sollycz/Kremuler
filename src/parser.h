@@ -25,7 +25,8 @@ typedef struct Parser {
     bool has_lookahead;
     unsigned int *indent_stack; // for keeping track of indentation [0] -> [0, 4] -> ...
     size_t indent_count;
-    bool at_line_start; // (is true after TOK_EOL or at the start of the file)
+    bool at_line_start;      // (is true after TOK_EOL or at the start of the file)
+    TokenType previous_type; // type of the token before current (CONTROL)
 } Parser;
 
 // initializes the parser
@@ -48,5 +49,10 @@ ParseResult lookahead_token(Parser *p, TokenType *type);
 
 // parses the whole input file and stores the root AST node into 'out'
 ParseResult parse_program(Parser *p, AstNode **out);
+
+// parses an if used as a value into 'out', the else branch is required
+// (otherwise PARSE_SYNTAX_ERROR)
+// ((the precedence parser calls it for an if inside an expression, the current token must be TOK_KW_IF))
+ParseResult parse_if_expression(Parser *p, AstNode **out);
 
 #endif
