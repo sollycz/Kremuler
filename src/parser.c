@@ -215,7 +215,9 @@ ParseResult parse_if_expression(Parser *p, AstNode **out) {
 }
 
 // parses an if expression or leaves it as an expression (CONTROL)
-// <value> -> <if> | <expression>
+// <value> -> <if_expression> | <expression>
+// <if_expression> -> TOK_KW_IF <expression> TOK_KW_THEN <branch> TOK_KW_ELSE <else_expression>
+// <else_expression> -> <if_expression> | <branch>
 static ParseResult parse_value(Parser *p, AstNode **out) {
     if (p->current.type == TOK_KW_IF) {
         return parse_if_expression(p, out);
