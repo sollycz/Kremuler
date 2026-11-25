@@ -2,8 +2,6 @@
  * @file semantic.c
  * @brief Implementation of Semantic analysis
  * @author Filip Radulovič (xradulf00)
- * @todo Add support for PARAMLISTS in the first pass (waiting for ast)
- * @todo Add support for the rest of extensions
  */
 
 #include "semantic.h"
@@ -23,6 +21,11 @@ typedef struct fn_chain {
 
 // top of function checking chain
 static const fn_chain *checking = NULL;
+
+// Returns true if node is Int literal 0.
+static bool is_zero_literal(const AstNode *node) {
+    return node->node_kind == AST_LITERAL && node->type == TYPE_INT && node->as.literal.value.int_val == 0;
+}
 
 // Returns true if type is INT or DOUBLE.
 static bool is_numeric(DataType type) {
@@ -69,6 +72,20 @@ static sem_res_t stab_res_convert(stab_res_t res) {
 static const AstNode *last_statement(const AstNode *block) {
     const AstNodeList *statements = &block->as.block.statements;
     return statements->items[statements->count - 1];
+}
+
+// Unifies result types of two if branches.
+// Returns false if types are incompatible.
+static bool unify_types(DataType a, DataType b, DataType *out) {
+    if (a == b) {
+        *out = a;
+        return true;
+    }
+    if (is_numeric(a) && is_numeric(b)) {
+        *out = TYPE_DOUBLE;
+        return true;
+    }
+    return false;
 }
 
 // Checks that the main function has a valid signature.
@@ -249,6 +266,8 @@ static sem_res_t collect_all_functions(const AstNode *program) {
 static sem_res_t check_nested_block(AstNode *block);
 static sem_res_t check_function(stab_func *fn);
 static sem_res_t check_expr(AstNode *node);
+static sem_res_t check_if_expr(AstNode *node);
+static sem_res_t if_value_type(const AstNode *node, DataType *out);
 
 // Checks unary operator (-x +x), operand must be a number.
 // Returns SEM_OK if successful, otherwise error code.
@@ -534,6 +553,9 @@ static sem_res_t check_expr(AstNode *node) {
     case AST_CALL:
         return check_call(node);
 
+    case AST_IF:
+        return check_if_expr(node);
+
     default:
         return error(SEM_INTERNAL, node->line, "unexpected node in expression");
     }
@@ -700,6 +722,131 @@ static sem_res_t check_while(AstNode *node) {
     return check_nested_block(node->as.while_statement.block);
 }
 
+// Returns result type of an already checked block, given by its last statement.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t block_value_type(const AstNode *block, DataType *out) {
+    const AstNode *last = last_statement(block);
+
+    // nested if has as the last statement has type Unit -> get it value from its branches
+    if (last->node_kind == AST_IF) {
+        return if_value_type(last, out);
+    }
+
+    *out = last->type;
+    return SEM_OK;
+}
+
+// Computes result type of an already checked if.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t if_value_type(const AstNode *node, DataType *out) {
+    const AstNode *else_block = node->as.if_statement.else_block;
+
+    // missing else would cause segfault
+    if (else_block == NULL) {
+        *out = TYPE_UNIT;
+        return SEM_OK;
+    }
+
+    DataType type_a;
+    sem_res_t res = block_value_type(node->as.if_statement.then_block, &type_a);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    DataType type_b;
+    res = block_value_type(else_block, &type_b);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    if (!unify_types(type_a, type_b, out)) {
+        return error(SEM_TYPE, node->line, "branches of if expression have incompatible types");
+    }
+
+    return SEM_OK;
+}
+
+// Checks if used as an expression.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_if_expr(AstNode *node) {
+    sem_res_t res = check_if(node);
+    if (res != SEM_OK) {
+        return res;
+    }
+    return if_value_type(node, &node->type);
+}
+
+// Checks expression which must be Int (range bounds and step).
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_int_expr(AstNode *node) {
+    sem_res_t res = check_expr(node);
+    if (res != SEM_OK) {
+        return res;
+    }
+    if (node->type != TYPE_INT) {
+        return error(SEM_TYPE, node->line, "range bounds and step must be Int");
+    }
+    return SEM_OK;
+}
+
+// Checks for loop.
+// Returns SEM_OK if successful, otherwise error code.
+static sem_res_t check_for(AstNode *node) {
+    // evaluate range
+    sem_res_t res = check_int_expr(node->as.for_statement.from);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    res = check_int_expr(node->as.for_statement.to);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    AstNode *step = node->as.for_statement.step;
+    if (step != NULL) {
+        res = check_int_expr(step);
+        if (res != SEM_OK) {
+            return res;
+        }
+        // zero literals are not allowed
+        if (is_zero_literal(step)) {
+            return error(SEM_OTHER, step->line, "step of range cannot be zero");
+        }
+    }
+
+    // scope
+    res = stab_res_convert(stab_enter_scope(sem_st));
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    stab_res_t st_res;
+    stab_var *var = stab_declare_var(sem_st, node->as.for_statement.var_name, TYPE_INT, false, &st_res, false);
+    if (!var) {
+        return stab_res_convert(st_res);
+    }
+    // save id for codegen
+    node->var_id = var->id;
+
+    // every guard must be boolean
+    const AstNodeList *guards = &node->as.for_statement.guards;
+    for (size_t i = 0; i < guards->count; i++) {
+        res = check_cond(guards->items[i]);
+        if (res != SEM_OK) {
+            return res;
+        }
+    }
+
+    res = check_nested_block(node->as.for_statement.block);
+    if (res != SEM_OK) {
+        return res;
+    }
+
+    stab_leave_scope(sem_st);
+    return SEM_OK;
+}
+
 // Checks a statement by calling corresponding check function.
 // Returns SEM_OK if successful, otherwise error code.
 static sem_res_t check_statement(AstNode *node) {
@@ -725,6 +872,9 @@ static sem_res_t check_statement(AstNode *node) {
 
     case AST_WHILE:
         return check_while(node);
+
+    case AST_FOR:
+        return check_for(node);
 
     default:
         return error(SEM_INTERNAL, node->line, "unexpected node in block");
@@ -916,21 +1066,33 @@ static sem_res_t check_function(stab_func *fn) {
 
     // result of the body is given by its last statement
     const AstNodeList *statements = &body->as.block.statements;
-    const AstNode *last = statements->items[statements->count - 1];
+    AstNode *last = statements->items[statements->count - 1];
+
+    // result of the last statement is compared with return type except return
+    bool check_result = last->node_kind != AST_RETURN;
 
     // ending with if is allowed only for:
     //  - explicit Unit
     //  - return in every branch
     //  - return type Unit in every branch
-    if (last->node_kind == AST_IF && !if_at_end_allowed(fn, body)) {
-        return error(SEM_TYPE, last->line, "function body ending with if must return in every branch");
+    if (last->node_kind == AST_IF) {
+        if (if_at_end_allowed(fn, body)) {
+            // if as a statement
+            check_result = false;
+        } else {
+            // otherwise if is an expression and its value is the result
+            res = if_value_type(last, &last->type);
+            if (res != SEM_OK) {
+                return res;
+            }
+        }
     }
 
     // infer return type from last one
     if (!fn->ret_explicit) {
         fn->ret_type = last->type;
         // return type doesnt match allowed return types
-    } else if (!is_explicit_unit(fn) && last->node_kind != AST_RETURN && last->node_kind != AST_IF) {
+    } else if (!is_explicit_unit(fn) && check_result) {
         if (!is_assignable(fn->ret_type, last->type)) {
             return error(SEM_TYPE, last->line, "result of function body does not match return type");
         }
