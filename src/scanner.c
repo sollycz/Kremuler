@@ -790,9 +790,11 @@ static StderrMessage scanner_read_token(Token *token) {
                 state = STATE_IDENTIFIER;
                 break;
             }
-
+            scanner_ungetc(c);
             buffer_free(&buffer);
-            return STDERR_INVALID_IDENTIFIER;
+
+            token->type = TOK_UNDERSCORE;
+            return STDERR_NONE;
 
         // Integer literals
         case STATE_INT_ZERO: {
