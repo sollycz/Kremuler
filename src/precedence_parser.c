@@ -932,7 +932,10 @@ int parse_expression(Parser *parser, AstNode **result) {
         else if (token->type == TOK_INTERPOLATION_END && parentheses_depth == 0) {
             input_symbol = SYMBOL_END;
         }
-        else if ((token->type == TOK_KW_DO || token->type == TOK_KW_THEN) && parentheses_depth == 0) {
+        else if ((token->type == TOK_KW_DO || token->type == TOK_KW_THEN || token->type == TOK_KW_ELSE) && parentheses_depth == 0) {
+            input_symbol = SYMBOL_END;
+        }
+        else if ((token->type == TOK_ID || token->type == TOK_KW_IF) && needs_operand == false && parentheses_depth == 0) {
             input_symbol = SYMBOL_END;
         }
         else if (token_to_symbol(token->type, needs_operand, &input_symbol) != true) {
