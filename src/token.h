@@ -36,6 +36,7 @@ typedef enum token_type {
     TOK_MINUS,
     TOK_DIVISION,
     TOK_MULTIPLY,
+    TOK_UNDERSCORE,
     TOK_EQUAL,
     TOK_NOT_EQUAL,
     TOK_GREATER_THAN,
