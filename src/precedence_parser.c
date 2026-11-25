@@ -802,6 +802,28 @@ int parse_expression(Parser *parser, AstNode **result) {
     size_t parentheses_depth = 0;
 
     while (1) {
+        if (token->type == TOK_KW_IF && needs_operand == true) {
+            AstNode *node = NULL;
+            ParseResult result = parse_if_expression(parser, &node);
+            if (result != PARSE_OK) {
+                stack_and_ast_free(&stack);
+                return result;
+            }
+
+            StackItem item = {0};
+            item.type = STACK_EXPRESSION;
+            item.ast = node;
+
+            bool push_result = stack_push(&stack, item);
+            if (push_result != true) {
+                stack_and_ast_free(&stack);
+                ast_free(node);
+                return 99;
+            }
+
+            needs_operand = false;
+            continue;
+        }
 
         // parse the interpolated string as one whole expression.
         if (token->type == TOK_INTERPOLATED_BEGIN && needs_operand == true) {
