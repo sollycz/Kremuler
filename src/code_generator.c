@@ -12,14 +12,16 @@
 
 void generate_code(AstNode *ast, stab *stab);
 static void gen_node(AstNode *node);
+static unsigned count_fors(AstNode *block);
 static void gen_builtin_funcs(void);
 
 static stab *st;
 static stab_func *current_func;
 
-static unsigned int if_counter;
-static unsigned int while_counter;
-static unsigned int skip_counter;
+static unsigned if_counter;
+static unsigned for_counter;
+static unsigned while_counter;
+static unsigned skip_counter;
 
 static bool direct_func_block;
 
@@ -41,6 +43,7 @@ static void gen_node(AstNode *node) {
         printf("DEFVAR GF@tmp1\n");
         printf("DEFVAR GF@tmp2\n");
         printf("DEFVAR GF@tmp3\n");
+        printf("DEFVAR GF@tmp4\n");
 
         stab_func *main = stab_main(st);
 
@@ -85,12 +88,21 @@ static void gen_node(AstNode *node) {
                            node->as.function.receiver != NULL ? &node->as.function.receiver->as.parameter.type : NULL);
         assert(current_func != NULL);
 
-        // gen DEFVARs for locals throughout the whole func
+        // gen DEFVARs for locals throughout the current func
         for (size_t i = 0; i < current_func->locals_count; i++) {
             if (!current_func->locals[i]->is_param) {
                 // local frame: var_name$autoinc_id
                 printf("DEFVAR LF@%s$%u\n", current_func->locals[i]->name, current_func->locals[i]->id);
             }
+        }
+
+        // count for cycles inside current func
+        unsigned for_cycles = count_fors(node->as.function.block);
+
+        // gen DEFVARs for helper vars for "for" statements
+        for (unsigned i = 0; i < for_cycles; i++) {
+            printf("DEFVAR LF@for$to$%u\n", for_counter + i);
+            printf("DEFVAR LF@for$step$%u\n", for_counter + i);
         }
 
         direct_func_block = true;
@@ -135,7 +147,7 @@ static void gen_node(AstNode *node) {
     }
     case AST_WHILE: {
 
-        unsigned int while_save = while_counter++;
+        unsigned while_save = while_counter++;
 
         // condition
         printf("LABEL while$start$%u\n", while_save);
@@ -153,9 +165,157 @@ static void gen_node(AstNode *node) {
 
         break;
     }
+    case AST_FOR: {
+
+        unsigned for_save = for_counter++;
+
+        // eval generator's from, to, step and pop it to tmp vars
+        gen_node(node->as.for_statement.from);
+        gen_node(node->as.for_statement.to);
+        // step can be implicit 1
+        if (node->as.for_statement.step != NULL) {
+            gen_node(node->as.for_statement.step);
+            printf("POPS GF@tmp3\n");
+
+            // check step != 0
+            // TODO: should put an if (node->as.for_statement.step->node_kind != AST_LITERAL) ?
+            printf("JUMPIFNEQ for$zero_check$%u GF@tmp3 int@0\n"
+                   "EXIT int@40\n"
+                   "LABEL for$zero_check$%u\n",
+                   for_save,
+                   for_save);
+        } else {
+            printf("MOVE GF@tmp3 int@1\n");
+        }
+        printf("POPS GF@tmp2\n");
+        printf("POPS GF@tmp1\n");
+
+        // check generator for wrong direction/zero cycles
+        // e.g.: 1 to 4 by -2; or: 1 until 1
+        //
+        // then calculate end:
+        // - inclusive && step is not null: end = ((to - from) / step + 1) * step + from
+        // - else: end = to + (inclusive ? 1 : 0)
+        //   -> because step = 1, so it HAS to hit it
+        if (node->as.for_statement.inclusive && node->as.for_statement.step != NULL) {
+            // check if step is +/-
+            printf("LT GF@tmp4 GF@tmp3 int@0\n"
+                   "JUMPIFEQ for$neg_step$%u GF@tmp4 bool@true\n"
+
+                   // pos_step
+                   // if (from > to) then 0 cycles
+                   "GT GF@tmp4 GF@tmp1 GF@tmp2\n"
+                   "JUMPIFEQ for$end$%u GF@tmp4 bool@true\n"
+                   "JUMP for$calc_end$%u\n"
+
+                   // neg_step
+                   // if (from < to) then 0 cycles
+                   "LABEL for$neg_step$%u\n"
+                   "LT GF@tmp4 GF@tmp1 GF@tmp2\n"
+                   "JUMPIFEQ for$end$%u GF@tmp4 bool@true\n",
+                   for_save,
+                   for_save,
+                   for_save,
+                   for_save,
+                   for_save);
+
+            // calc end
+            printf("LABEL for$calc_end$%u\n"
+                   "MOVE LF@%s$%u GF@tmp1\n"
+
+                   "SUB GF@tmp4 GF@tmp2 GF@tmp1\n"      // to - from
+                   "IDIV GF@tmp4 GF@tmp4 GF@tmp3\n"     // /= step
+                   "ADD GF@tmp4 GF@tmp4 int@1\n"        // += 1
+                   "MUL GF@tmp4 GF@tmp4 GF@tmp3\n"      // *= step
+                   "ADD LF@for$to$%u GF@tmp4 GF@tmp1\n" // += from
+
+                   "MOVE LF@for$step$%u GF@tmp3\n",
+                   for_save,
+                   node->as.for_statement.var_name,
+                   node->var_id,
+                   for_save,
+                   for_save);
+        } else {
+            // check generator
+            if (node->as.for_statement.inclusive) {
+                // inclusive right bound
+                // step is implicitly 1
+                // if (from > to) then 0 cycles
+                printf("GT GF@tmp4 GF@tmp1 GF@tmp2\n"
+                       "JUMPIFEQ for$end$%u GF@tmp4 bool@true\n",
+                       for_save);
+            } else {
+                // exclusive right bound => step = 1
+                // if (from >= to) then 0 cycles
+                printf("GT GF@tmp4 GF@tmp1 GF@tmp2\n"
+                       "JUMPIFEQ for$end$%u GF@tmp4 bool@true\n"
+                       "JUMPIFEQ for$end$%u GF@tmp1 GF@tmp2\n",
+                       for_save,
+                       for_save);
+            }
+
+            // calculate end
+            // end = to ...
+            printf("MOVE LF@%s$%u GF@tmp1\n"
+                   "MOVE LF@for$to$%u GF@tmp2\n"
+                   "MOVE LF@for$step$%u GF@tmp3\n",
+                   node->as.for_statement.var_name,
+                   node->var_id,
+                   for_save,
+                   for_save);
+
+            // ... + (inclusive ? 1 : 0)
+            if (node->as.for_statement.inclusive) {
+                printf("ADD LF@for$to$%u LF@for$to$%u int@1\n", for_save, for_save);
+            }
+        }
+
+        // start (after gen check)
+        printf("LABEL for$start$%u\n", for_save);
+
+        // if (!guard1) continue
+        // if (!guard2) continue
+        // ...
+        // else ok, run block
+        for (size_t i = 0; i < node->as.for_statement.guards.count; i++) {
+            gen_node(node->as.for_statement.guards.items[i]);
+            printf("PUSHS bool@false\n"
+                   "JUMPIFEQS for$continue$%u\n",
+                   for_save);
+        }
+
+        // inner block
+        gen_node(node->as.for_statement.block);
+
+        // continue
+        printf("LABEL for$continue$%u\n", for_save);
+
+        // i += step
+        printf("ADD LF@%s$%u LF@%s$%u LF@for$step$%u\n",
+               node->as.for_statement.var_name,
+               node->var_id,
+               node->as.for_statement.var_name,
+               node->var_id,
+               for_save);
+
+        // if (i == to) end
+        printf("JUMPIFEQ for$end$%u LF@%s$%u LF@for$to$%u\n",
+               for_save,
+               node->as.for_statement.var_name,
+               node->var_id,
+               for_save);
+
+        // cycle back up for next iteration
+        printf("JUMP for$start$%u\n", for_save);
+
+        // end
+        printf("LABEL for$end$%u\n", for_save);
+
+        break;
+    }
     case AST_IF: {
 
-        unsigned int if_save = if_counter++;
+        unsigned if_save = if_counter++;
 
         gen_node(node->as.if_statement.condition);
         printf("PUSHS bool@false\n");
@@ -370,7 +530,7 @@ static void gen_node(AstNode *node) {
         }
 
         // short circuit for OR: true || (don't eval)
-        unsigned int skip_save = skip_counter++;
+        unsigned skip_save = skip_counter++;
         if (node->as.binary.operator_type == OP_OR) {
             printf("PUSHS bool@true\n"
                    "JUMPIFEQS $skip$%u\n"
@@ -582,6 +742,31 @@ static void gen_node(AstNode *node) {
         assert(false);
         break;
     }
+}
+
+static unsigned count_fors(AstNode *block) {
+    unsigned count = 0;
+    for (size_t i = 0; i < block->as.block.statements.count; i++) {
+        switch (block->as.block.statements.items[i]->node_kind) {
+        case AST_WHILE:
+            count += count_fors(block->as.block.statements.items[i]->as.while_statement.block);
+            break;
+        case AST_FOR:
+            count++;
+            count += count_fors(block->as.block.statements.items[i]->as.for_statement.block);
+            break;
+        case AST_IF:
+            count += count_fors(block->as.block.statements.items[i]->as.if_statement.then_block);
+            if (block->as.block.statements.items[i]->as.if_statement.else_block != NULL) {
+                count += count_fors(block->as.block.statements.items[i]->as.if_statement.else_block);
+            }
+            break;
+        default:
+            // do nothing - there is no block inside
+            break;
+        }
+    }
+    return count;
 }
 
 static void gen_builtin_funcs(void) {
