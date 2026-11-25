@@ -10,7 +10,6 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-void generate_code(AstNode *ast, stab *stab);
 static void gen_node(AstNode *node);
 static void gen_program(AstNode *node);
 static void gen_function(AstNode *node);
@@ -27,6 +26,7 @@ static void gen_literal(AstNode *node);
 static void gen_identifier(AstNode *node);
 static void gen_unary_operator(AstNode *node);
 static void gen_binary_operator(AstNode *node);
+static bool is_num(AstNode *node);
 static void gen_call(AstNode *node);
 static void gen_builtin_funcs(void);
 
@@ -255,6 +255,8 @@ static void gen_while(AstNode *node) {
 // CONTROL: generate for cycle
 static void gen_for(AstNode *node) {
     unsigned for_save = for_counter++;
+    char *iteration_var_name = node->as.for_statement.var_name;
+    unsigned iteration_var_id = node->var_id;
 
     // eval generator's from, to, step and pop it to tmp vars
     gen_node(node->as.for_statement.from);
@@ -319,8 +321,8 @@ static void gen_for(AstNode *node) {
 
                "MOVE LF@for$step$%u GF@tmp3\n",
                for_save,
-               node->as.for_statement.var_name,
-               node->var_id,
+               iteration_var_name,
+               iteration_var_id,
                for_save,
                for_save);
     } else {
@@ -347,8 +349,8 @@ static void gen_for(AstNode *node) {
         printf("MOVE LF@%s$%u GF@tmp1\n"
                "MOVE LF@for$to$%u GF@tmp2\n"
                "MOVE LF@for$step$%u GF@tmp3\n",
-               node->as.for_statement.var_name,
-               node->var_id,
+               iteration_var_name,
+               iteration_var_id,
                for_save,
                for_save);
 
@@ -380,18 +382,14 @@ static void gen_for(AstNode *node) {
 
     // i += step
     printf("ADD LF@%s$%u LF@%s$%u LF@for$step$%u\n",
-           node->as.for_statement.var_name,
-           node->var_id,
-           node->as.for_statement.var_name,
-           node->var_id,
+           iteration_var_name,
+           iteration_var_id,
+           iteration_var_name,
+           iteration_var_id,
            for_save);
 
     // if (i == to) end
-    printf("JUMPIFEQ for$end$%u LF@%s$%u LF@for$to$%u\n",
-           for_save,
-           node->as.for_statement.var_name,
-           node->var_id,
-           for_save);
+    printf("JUMPIFEQ for$end$%u LF@%s$%u LF@for$to$%u\n", for_save, iteration_var_name, iteration_var_id, for_save);
 
     // cycle back up for next iteration
     printf("JUMP for$start$%u\n", for_save);
@@ -404,11 +402,12 @@ static void gen_for(AstNode *node) {
 static void gen_if(AstNode *node) {
     unsigned if_save = if_counter++;
 
+    // condition
     gen_node(node->as.if_statement.condition);
     printf("PUSHS bool@false\n");
     printf("JUMPIFEQS else$%u\n", if_save);
 
-    // if/then block
+    // then block
     gen_node(node->as.if_statement.then_block);
 
     // flow
@@ -582,20 +581,18 @@ static void gen_binary_operator(AstNode *node) {
     case OP_SUB:
     case OP_DIV:
     case OP_MUL:
-        assert((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE));
+        assert(is_num(l) && is_num(r));
         break;
     case OP_ADD:
     case OP_LT:
     case OP_LE:
     case OP_GT:
     case OP_GE:
-        assert(((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE)) ||
-               (l->type == TYPE_STRING && r->type == TYPE_STRING));
+        assert((is_num(l) && is_num(r)) || (l->type == TYPE_STRING && r->type == TYPE_STRING));
         break;
     case OP_EQ:
     case OP_NE:
-        assert(((l->type == TYPE_INT || l->type == TYPE_DOUBLE) && (r->type == TYPE_INT || r->type == TYPE_DOUBLE)) ||
-               l->type == r->type);
+        assert((is_num(l) && is_num(r)) || l->type == r->type);
         break;
     case OP_AND:
     case OP_OR:
@@ -735,6 +732,12 @@ static void gen_binary_operator(AstNode *node) {
     }
 }
 
+// returns true if node is type int or float
+// useful for quick type assertion
+static bool is_num(AstNode *node) {
+    return node->type == TYPE_INT || node->type == TYPE_DOUBLE;
+}
+
 // generate func call
 // handles arg eval and assignment to temp/local vars, frame push and pop
 static void gen_call(AstNode *node) {
@@ -831,78 +834,63 @@ static void gen_builtin_funcs(void) {
 
            // check for nil
            "TYPE GF@tmp1 LF@value\n"
-           "JUMPIFNEQ else$%u GF@tmp1 string@nil\n"
+           "JUMPIFNEQ else$print GF@tmp1 string@nil\n"
            "WRITE string@()\n"
            "RETURN\n"
 
            // normal types
-           "LABEL else$%u\n"
+           "LABEL else$print\n"
            "WRITE LF@value\n"
-           "RETURN\n",
-           if_counter,
-           if_counter);
-    if_counter++;
+           "RETURN\n");
 
     // readLine(): String
     printf("LABEL readLine\n"
            "READ GF@tmp1 string\n"
 
-           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "JUMPIFEQ else$readLine GF@tmp1 nil@nil\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n"
 
-           "LABEL else$%u\n"
+           "LABEL else$readLine\n"
            "PUSHS string@\n"
-           "RETURN\n",
-           if_counter,
-           if_counter);
-    if_counter++;
+           "RETURN\n");
 
     // readInt(): Int
     printf("LABEL readInt\n"
            "READ GF@tmp1 int\n"
 
-           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "JUMPIFEQ else$readInt GF@tmp1 nil@nil\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n"
 
-           "LABEL else$%u\n"
+           "LABEL else$readInt\n"
            "PUSHS int@0\n"
-           "RETURN\n",
-           if_counter,
-           if_counter);
-    if_counter++;
+           "RETURN\n");
 
     // readDouble(): Double
     printf("LABEL readDouble\n"
            "READ GF@tmp1 float\n"
 
-           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "JUMPIFEQ else$readDouble GF@tmp1 nil@nil\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n"
 
-           "LABEL else$%u\n"
+           "LABEL else$readDouble\n"
            "PUSHS float@%a\n"
            "RETURN\n",
-           if_counter,
-           if_counter,
            0.0f);
-    if_counter++;
 
     // readBoolean(): Bool
     printf("LABEL readBoolean\n"
            "READ GF@tmp1 bool\n"
 
-           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "JUMPIFEQ else$readBoolean GF@tmp1 nil@nil\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n"
 
-           "LABEL else$%u\n"
+           "LABEL else$readBoolean\n"
            "PUSHS bool@false\n"
-           "RETURN\n",
-           if_counter,
-           if_counter);
-    if_counter++;
+           "RETURN\n");
 
     // toStr(value: Any): String
     // toString: String
@@ -912,48 +900,37 @@ static void gen_builtin_funcs(void) {
            "PUSHS LF@value\n"
 
            // string
-           "JUMPIFNEQ else$%u GF@tmp1 string@string\n"
+           "JUMPIFNEQ else$toStr$string GF@tmp1 string@string\n"
            "RETURN\n"
-           "LABEL else$%u\n"
+           "LABEL else$toStr$string\n"
 
            // int
-           "JUMPIFNEQ else$%u GF@tmp1 string@int\n"
+           "JUMPIFNEQ else$toStr$int GF@tmp1 string@int\n"
            "INT2STRS\n"
            "RETURN\n"
-           "LABEL else$%u\n"
+           "LABEL else$toStr$int\n"
 
            // float
-           "JUMPIFNEQ else$%u GF@tmp1 string@float\n"
+           "JUMPIFNEQ else$toStr$float GF@tmp1 string@float\n"
            "FLOAT2STRS\n"
            "RETURN\n"
-           "LABEL else$%u\n"
+           "LABEL else$toStr$float\n"
 
            // bool
-           "JUMPIFNEQ else$%u GF@tmp1 string@bool\n"
+           "JUMPIFNEQ else$toStr$bool GF@tmp1 string@bool\n"
            "PUSHS bool@true\n"
-           "JUMPIFEQS else$%u\n"
+           "JUMPIFEQS else$toStr$bool$true\n"
            "PUSHS string@false\n"
            "RETURN\n"
-           "LABEL else$%u\n"
+           "LABEL else$toStr$bool$true\n"
            "PUSHS string@true\n"
            "RETURN\n"
-           "LABEL else$%u\n"
+           "LABEL else$toStr$bool\n"
 
            // nil
            "POPS GF@tmp2\n"
            "PUSHS string@()\n"
-           "RETURN\n",
-           if_counter,
-           if_counter,
-           if_counter + 1,
-           if_counter + 1,
-           if_counter + 2,
-           if_counter + 2,
-           if_counter + 3,
-           if_counter + 4,
-           if_counter + 4,
-           if_counter + 3);
-    if_counter += 5;
+           "RETURN\n");
 
     // toInt(value: Double): Int
     // Int.toInt: Int
@@ -975,84 +952,66 @@ static void gen_builtin_funcs(void) {
 
            // start < 0
            "LT GF@tmp1 LF@start int@0\n"
-           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$subStr GF@tmp1 bool@true\n"
 
            // end < 0
            "LT GF@tmp1 LF@end int@0\n"
-           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$subStr GF@tmp1 bool@true\n"
 
            // start > end
            "GT GF@tmp1 LF@start LF@end\n"
-           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$subStr GF@tmp1 bool@true\n"
 
            // start >= strLength(value)
            "STRLEN GF@tmp2 LF@value\n"
            "GT GF@tmp1 LF@start GF@tmp2\n"
-           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
-           "JUMPIFEQ else$%u LF@start GF@tmp2\n"
+           "JUMPIFEQ else$subStr GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$subStr LF@start GF@tmp2\n"
 
            // end > strLength(value)
            "GT GF@tmp1 LF@end GF@tmp2\n"
-           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$subStr GF@tmp1 bool@true\n"
 
            "MOVE GF@tmp1 string@\n"  // op1
            "MOVE GF@tmp2 string@\n"  // op2
            "MOVE GF@tmp3 LF@start\n" // index
 
-           "LABEL while$start$%u\n"
-           "JUMPIFEQ while$end$%u GF@tmp3 LF@end\n"
+           "LABEL while$start$subStr\n"
+           "JUMPIFEQ while$end$subStr GF@tmp3 LF@end\n"
 
            "GETCHAR GF@tmp2 LF@value GF@tmp3\n"
            "CONCAT GF@tmp1 GF@tmp1 GF@tmp2\n"
            "ADD GF@tmp3 GF@tmp3 int@1\n"
 
-           "JUMP while$start$%u\n"
-           "LABEL while$end$%u\n"
+           "JUMP while$start$subStr\n"
+           "LABEL while$end$subStr\n"
 
            "PUSHS GF@tmp1\n"
            "RETURN\n"
 
-           "LABEL else$%u\n"
-           "EXIT int@40\n", // exit 40 - runtime error
-           if_counter,
-           if_counter,
-           if_counter,
-           if_counter,
-           if_counter,
-           if_counter,
-           while_counter,
-           while_counter,
-           while_counter,
-           while_counter,
-           if_counter);
-    if_counter++;
-    while_counter++;
+           "LABEL else$subStr\n"
+           "EXIT int@40\n"); // exit 40 - runtime error
 
     // ord(value: String, index: Int): Int
     printf("LABEL ord\n"
 
            // index < 0
            "LT GF@tmp1 LF@index int@0\n"
-           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$ord GF@tmp1 bool@true\n"
 
            // index >= strLength(value)
            "STRLEN GF@tmp2 LF@value\n"
            "GT GF@tmp1 LF@index GF@tmp2\n"
-           "JUMPIFEQ else$%u GF@tmp1 bool@true\n"
-           "JUMPIFEQ else$%u LF@index GF@tmp2\n"
+           "JUMPIFEQ else$ord GF@tmp1 bool@true\n"
+           "JUMPIFEQ else$ord LF@index GF@tmp2\n"
 
            "STRI2INT GF@tmp1 LF@value LF@index\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n"
 
-           "LABEL else$%u\n"
+           "LABEL else$ord\n"
            "PUSHS int@-1\n"
-           "RETURN\n",
-           if_counter,
-           if_counter,
-           if_counter,
-           if_counter);
-    if_counter++;
+           "RETURN\n");
 
     // chr(code: Int): String
     printf("LABEL chr\n"
@@ -1067,17 +1026,14 @@ static void gen_builtin_funcs(void) {
 
            // if truncating up
            "LT GF@tmp2 LF@value GF@tmp1\n"
-           "JUMPIFNEQ else$%u GF@tmp2 bool@true\n"
+           "JUMPIFNEQ else$floor GF@tmp2 bool@true\n"
 
            // then value =- 1
            "SUB GF@tmp1 GF@tmp1 float@%a\n"
 
            // else
-           "LABEL else$%u\n"
+           "LABEL else$floor\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n",
-           if_counter,
-           1.0f,
-           if_counter);
-    if_counter++;
+           1.0f);
 }
