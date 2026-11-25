@@ -311,7 +311,7 @@ static sem_res_t check_binary(AstNode *node) {
             node->type = TYPE_STRING;
             return SEM_OK;
         }
-        // intentional fall through to arithmetic
+        // intentional fall through - to arithmetic
     case OP_SUB:
     case OP_MUL:
     case OP_DIV:
