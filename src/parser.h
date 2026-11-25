@@ -50,4 +50,9 @@ ParseResult lookahead_token(Parser *p, TokenType *type);
 // parses the whole input file and stores the root AST node into 'out'
 ParseResult parse_program(Parser *p, AstNode **out);
 
+// parses an if used as a value into 'out', the else branch is required
+// (otherwise PARSE_SYNTAX_ERROR)
+// ((the precedence parser calls it for an if inside an expression, the current token must be TOK_KW_IF))
+ParseResult parse_if_expression(Parser *p, AstNode **out);
+
 #endif

@@ -184,11 +184,41 @@ static ParseResult parse_block(Parser *p, AstNode **out);
 static ParseResult parse_if(Parser *p, AstNode **out);
 static ParseResult parse_statement_simple(Parser *p, AstNode **out);
 
+// parses an if used as a value, its else branch is required (CONTROL)
+ParseResult parse_if_expression(Parser *p, AstNode **out) {
+    AstNode *node = NULL;
+    ParseResult result = parse_if(p, &node);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // every if in an "else if" chain needs its own else
+    AstNode *current = node;
+    while (current != NULL) {
+        AstNode *else_block = current->as.if_statement.else_block;
+        if (else_block == NULL) {
+            ast_free(node);
+            return PARSE_SYNTAX_ERROR;
+        }
+
+        // "else if" is stored as a block with the nested if as its only statement
+        AstNodeList *statements = &else_block->as.block.statements;
+        if (statements->count == 1 && statements->items[0]->node_kind == AST_IF) {
+            current = statements->items[0];
+        } else {
+            current = NULL;
+        }
+    }
+
+    *out = node;
+    return PARSE_OK;
+}
+
 // parses an if expression or leaves it as an expression (CONTROL)
 // <value> -> <if> | <expression>
 static ParseResult parse_value(Parser *p, AstNode **out) {
     if (p->current.type == TOK_KW_IF) {
-        return parse_if(p, out);
+        return parse_if_expression(p, out);
     }
 
     return parse_expression(p, out);
@@ -862,6 +892,8 @@ static ParseResult parse_statement_simple(Parser *p, AstNode **out) {
         return parse_return(p, out);
     case TOK_KW_FOR:
         return parse_for(p, out);
+    case TOK_KW_IF:
+        return parse_if(p, out);
     case TOK_ID: {
         TokenType next;
         result = lookahead_token(p, &next);
