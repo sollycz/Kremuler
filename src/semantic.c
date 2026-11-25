@@ -741,6 +741,12 @@ static sem_res_t block_value_type(const AstNode *block, DataType *out) {
 static sem_res_t if_value_type(const AstNode *node, DataType *out) {
     const AstNode *else_block = node->as.if_statement.else_block;
 
+    // missing else would cause segfault
+    if (else_block == NULL) {
+        *out = TYPE_UNIT;
+        return SEM_OK;
+    }
+
     DataType type_a;
     sem_res_t res = block_value_type(node->as.if_statement.then_block, &type_a);
     if (res != SEM_OK) {
@@ -1060,7 +1066,7 @@ static sem_res_t check_function(stab_func *fn) {
 
     // result of the body is given by its last statement
     const AstNodeList *statements = &body->as.block.statements;
-    const AstNode *last = statements->items[statements->count - 1];
+    AstNode *last = statements->items[statements->count - 1];
 
     // result of the last statement is compared with return type except return
     bool check_result = last->node_kind != AST_RETURN;
