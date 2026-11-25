@@ -453,7 +453,7 @@ static ParseResult parse_return(Parser *p, AstNode **out) {
         return PARSE_INTERNAL_ERROR;
     }
 
-    if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON) {
+    if (p->current.type == TOK_EOL || p->current.type == TOK_SEMICOLON || p->current.type == TOK_KW_ELSE) {
         node->as.return_statement.value = NULL;
     } else {
         result = parse_value(p, &node->as.return_statement.value);
