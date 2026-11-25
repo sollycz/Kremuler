@@ -690,7 +690,110 @@ static bool is_identifier(Parser *p, const char *name) {
     return p->current.type == TOK_ID && strcmp(p->current.data.str_val, name) == 0;
 }
 
-// parses a for loop with one generator and any number of guards (CONTROL)
+// parses the generator and guards of a for loop
+// (on error the caller needs to free the node)
+// <for_generator> -> TOK_ID TOK_CONTROL_ARROW <expression> <to_or_until> <expression> <for_optional_by>
+// <for_header> -> <for_generator> <for_guard_list>
+// <for_header_multiline> -> TOK_EOL TOK_INDENT <for_generator> TOK_EOL <for_guard_list_multiline> TOK_DEDENT
+static ParseResult parse_for_header(Parser *p, AstNode *node, bool multiline) {
+    ParseResult result;
+
+    // TOK_ID (the control variable)
+    if (p->current.type != TOK_ID) {
+        return PARSE_SYNTAX_ERROR;
+    }
+    node->as.for_statement.var_name = p->current.data.str_val;
+    p->current.data.str_val = NULL;
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // TOK_CONTROL_ARROW
+    result = expect(p, TOK_CONTROL_ARROW);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // from
+    result = parse_expression(p, &node->as.for_statement.from);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // <to_or_until>
+    if (is_identifier(p, "to")) {
+        node->as.for_statement.inclusive = true;
+    } else if (is_identifier(p, "until")) {
+        node->as.for_statement.inclusive = false;
+    } else {
+        return PARSE_SYNTAX_ERROR;
+    }
+
+    result = next_token(p);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    result = parse_expression(p, &node->as.for_statement.to);
+    if (result != PARSE_OK) {
+        return result;
+    }
+
+    // <for_optional_by>
+    if (is_identifier(p, "by")) {
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        result = parse_expression(p, &node->as.for_statement.step);
+        if (result != PARSE_OK) {
+            return result;
+        }
+    }
+
+    // <for_guard_list>
+    while (true) {
+        // multi line: the generator and every guard are on their own line
+        if (multiline) {
+            result = expect(p, TOK_EOL);
+            if (result != PARSE_OK) {
+                return result;
+            }
+        }
+
+        if (p->current.type != TOK_KW_IF) {
+            break;
+        }
+
+        result = next_token(p);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        AstNode *guard = NULL;
+        result = parse_expression(p, &guard);
+        if (result != PARSE_OK) {
+            return result;
+        }
+
+        if (ast_list_push(&node->as.for_statement.guards, guard) == false) {
+            ast_free(guard);
+            return PARSE_INTERNAL_ERROR;
+        }
+    }
+
+    return PARSE_OK;
+}
+
+// <for> -> TOK_KW_FOR <for_start> TOK_KW_DO <branch>
+// <for_start> -> <for_header> | <for_header_multiline>
+// <for_optional_by> -> TOK_ID"by" <expression> | epsilon
+// <for_guard_list> -> TOK_KW_IF <expression> <for_guard_list> | epsilon
+// <for_guard_list_multiline> -> TOK_KW_IF <expression> TOK_EOL <for_guard_list_multiline> | epsilon
+// <to_or_until> -> TOK_ID"to" | TOK_ID"until"
 static ParseResult parse_for(Parser *p, AstNode **out) {
     ParseResult result;
 
@@ -706,91 +809,26 @@ static ParseResult parse_for(Parser *p, AstNode **out) {
         return result;
     }
 
-    // TOK_ID (the control variable)
-    if (p->current.type != TOK_ID) {
-        ast_free(node);
-        return PARSE_SYNTAX_ERROR;
-    }
-    node->as.for_statement.var_name = p->current.data.str_val;
-    p->current.data.str_val = NULL;
-
-    result = next_token(p);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
-
-    // TOK_CONTROL_ARROW
-    result = expect(p, TOK_CONTROL_ARROW);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
-
-    // from
-    result = parse_expression(p, &node->as.for_statement.from);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
-
-    // to | until
-    if (is_identifier(p, "to")) {
-        node->as.for_statement.inclusive = true;
-    } else if (is_identifier(p, "until")) {
-        node->as.for_statement.inclusive = false;
+    if (p->current.type == TOK_EOL) {
+        // multi line header: TOK_EOL TOK_INDENT <header lines> TOK_DEDENT, then do aligned with for
+        result = next_token(p);
+        if (result == PARSE_OK) {
+            result = expect(p, TOK_INDENT);
+        }
+        if (result == PARSE_OK) {
+            result = parse_for_header(p, node, true);
+        }
+        if (result == PARSE_OK) {
+            result = expect(p, TOK_DEDENT);
+        }
     } else {
-        ast_free(node);
-        return PARSE_SYNTAX_ERROR;
+        // one line header
+        result = parse_for_header(p, node, false);
     }
 
-    result = next_token(p);
     if (result != PARSE_OK) {
         ast_free(node);
         return result;
-    }
-
-    result = parse_expression(p, &node->as.for_statement.to);
-    if (result != PARSE_OK) {
-        ast_free(node);
-        return result;
-    }
-
-    // optional step
-    if (is_identifier(p, "by")) {
-        result = next_token(p);
-        if (result != PARSE_OK) {
-            ast_free(node);
-            return result;
-        }
-
-        result = parse_expression(p, &node->as.for_statement.step);
-        if (result != PARSE_OK) {
-            ast_free(node);
-            return result;
-        }
-    }
-
-    // guards
-    while (p->current.type == TOK_KW_IF) {
-        result = next_token(p);
-        if (result != PARSE_OK) {
-            ast_free(node);
-            return result;
-        }
-
-        AstNode *guard = NULL;
-        result = parse_expression(p, &guard);
-        if (result != PARSE_OK) {
-            ast_free(node);
-            return result;
-        }
-
-        if (ast_list_push(&node->as.for_statement.guards, guard) == false) {
-            ast_free(guard);
-            ast_free(node);
-            return PARSE_INTERNAL_ERROR;
-        }
     }
 
     // TOK_KW_DO
