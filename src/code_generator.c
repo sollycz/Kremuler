@@ -178,12 +178,13 @@ static void gen_node(AstNode *node) {
             printf("POPS GF@tmp3\n");
 
             // check step != 0
-            // TODO: should put an if (node->as.for_statement.step->node_kind != AST_LITERAL) ?
-            printf("JUMPIFNEQ for$zero_check$%u GF@tmp3 int@0\n"
-                   "EXIT int@40\n"
-                   "LABEL for$zero_check$%u\n",
-                   for_save,
-                   for_save);
+            if (node->as.for_statement.step->node_kind != AST_LITERAL) {
+                printf("JUMPIFNEQ for$zero_check$%u GF@tmp3 int@0\n"
+                       "EXIT int@40\n"
+                       "LABEL for$zero_check$%u\n",
+                       for_save,
+                       for_save);
+            }
         } else {
             printf("MOVE GF@tmp3 int@1\n");
         }
