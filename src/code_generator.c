@@ -19,6 +19,7 @@ static stab_func *current_func;
 
 static unsigned int if_counter;
 static unsigned int while_counter;
+static unsigned int skip_counter;
 
 static bool direct_func_block;
 
@@ -72,9 +73,16 @@ static void gen_node(AstNode *node) {
     case AST_FUNCTION:
 
         // start of func
-        printf("LABEL %s\n", node->as.function.name);
+        if (node->as.function.receiver == NULL) {
+            printf("LABEL %s\n", node->as.function.name);
+        } else {
+            printf("LABEL $EXTKW$%s$%u\n", node->as.function.name, node->as.function.receiver->as.parameter.type);
+        }
 
-        current_func = stab_find_func(st, node->as.function.name, NULL);
+        current_func =
+            stab_find_func(st,
+                           node->as.function.name,
+                           node->as.function.receiver != NULL ? &node->as.function.receiver->as.parameter.type : NULL);
         assert(current_func != NULL);
 
         // gen DEFVARs for locals throughout the whole func
@@ -155,15 +163,18 @@ static void gen_node(AstNode *node) {
 
         // if/then block
         gen_node(node->as.if_statement.then_block);
-        printf("JUMP if$%u\n", if_save);
+
+        // flow
+        if (node->as.if_statement.else_block != NULL) {
+            printf("JUMP if$%u\n", if_save);
+        }
+        printf("LABEL else$%u\n", if_save);
 
         // else block
-        printf("LABEL else$%u\n", if_save);
         if (node->as.if_statement.else_block != NULL) {
             gen_node(node->as.if_statement.else_block);
+            printf("LABEL if$%u\n", if_save);
         }
-
-        printf("LABEL if$%u\n", if_save);
 
         break;
     }
@@ -358,6 +369,22 @@ static void gen_node(AstNode *node) {
             expanded = true;
         }
 
+        // short circuit for OR: true || (don't eval)
+        unsigned int skip_save = skip_counter++;
+        if (node->as.binary.operator_type == OP_OR) {
+            printf("PUSHS bool@true\n"
+                   "JUMPIFEQS $skip$%u\n"
+                   "PUSHS bool@false\n",
+                   skip_save);
+        }
+        // short circuit for AND: false && (don't eval)
+        else if (node->as.binary.operator_type == OP_AND) {
+            printf("PUSHS bool@false\n"
+                   "JUMPIFEQS $skip$%u\n"
+                   "PUSHS bool@true\n",
+                   skip_save);
+        }
+
         // eval right op
         gen_node(r);
 
@@ -441,12 +468,33 @@ static void gen_node(AstNode *node) {
             assert(false);
         }
 
+        // gen label for short-circuit ops
+        // non-short-circuited result is already on the stack, jump over the constant push
+        if (node->as.binary.operator_type == OP_OR) {
+            printf("JUMP $skip$end$%u\n"
+                   "LABEL $skip$%u\n"
+                   "PUSHS bool@true\n"
+                   "LABEL $skip$end$%u\n",
+                   skip_save,
+                   skip_save,
+                   skip_save);
+        } else if (node->as.binary.operator_type == OP_AND) {
+            printf("JUMP $skip$end$%u\n"
+                   "LABEL $skip$%u\n"
+                   "PUSHS bool@false\n"
+                   "LABEL $skip$end$%u\n",
+                   skip_save,
+                   skip_save,
+                   skip_save);
+        }
+
         break;
     }
     case AST_CALL: {
 
         // get the called func
-        stab_func *callee = stab_find_func(st, node->as.call.name, NULL);
+        stab_func *callee =
+            stab_find_func(st, node->as.call.name, node->as.call.is_member ? &node->as.call.args.items[0]->type : NULL);
         assert(callee != NULL);
 
         // get current param list
@@ -454,8 +502,14 @@ static void gen_node(AstNode *node) {
         stab_size_t param_list_idx = 0;
         stab_param_list *param_list = &callee->param_lists[0];
 
+        // EXTKW: eval extended arg
+        if (node->as.call.is_member) {
+            gen_node(node->as.call.args.items[0]);
+        }
+
         // eval all args first
-        for (size_t i = 0; i < node->as.call.args.count; i++) {
+        // EXTKW: "extends" param is inserted first into AST's args
+        for (size_t i = node->as.call.is_member ? 1 : 0; i < node->as.call.args.count; i++) {
             AstNode *arg = node->as.call.args.items[i];
 
             // eval arg
@@ -479,8 +533,9 @@ static void gen_node(AstNode *node) {
 
         // put the arg values inside temp frame
         // go from the back of the arg list and pop values from stack into the arg vars
+        // EXTKW: "extends" param is inserted first into AST's args
         printf("CREATEFRAME\n");
-        for (size_t i = 0; i < node->as.call.args.count; i++) {
+        for (size_t i = node->as.call.is_member ? 1 : 0; i < node->as.call.args.count; i++) {
             // get current param list and param idx
             while (param_idx == 0) {
                 assert(param_list_idx > 0);
@@ -500,8 +555,24 @@ static void gen_node(AstNode *node) {
             }
         }
 
+        // EXTKW: def param and assign value
+        if (node->as.call.is_member) {
+            if (callee->is_builtin) {
+                printf("DEFVAR TF@%s\n", callee->extends.name);
+                printf("POPS TF@%s\n", callee->extends.name);
+            } else {
+                printf("DEFVAR TF@%s$%u\n", callee->extends.name, callee->extends.id);
+                printf("POPS TF@%s$%u\n", callee->extends.name, callee->extends.id);
+            }
+        }
+
+        // call
         printf("PUSHFRAME\n");
-        printf("CALL %s\n", node->as.call.name);
+        if (!node->as.call.is_member || callee->is_builtin) {
+            printf("CALL %s\n", node->as.call.name);
+        } else {
+            printf("CALL $EXTKW$%s$%u\n", node->as.call.name, callee->extends.type);
+        }
         printf("POPFRAME\n");
 
         break;
@@ -578,8 +649,25 @@ static void gen_builtin_funcs(void) {
            0.0f);
     if_counter++;
 
+    // readBoolean(): Bool
+    printf("LABEL readBoolean\n"
+           "READ GF@tmp1 bool\n"
+
+           "JUMPIFEQ else$%u GF@tmp1 nil@nil\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n"
+
+           "LABEL else$%u\n"
+           "PUSHS bool@false\n"
+           "RETURN\n",
+           if_counter,
+           if_counter);
+    if_counter++;
+
     // toStr(value: Any): String
+    // toString: String
     printf("LABEL toStr\n"
+           "LABEL toString\n" // VALMEM
            "TYPE GF@tmp1 LF@value\n"
            "PUSHS LF@value\n"
 
@@ -600,6 +688,17 @@ static void gen_builtin_funcs(void) {
            "RETURN\n"
            "LABEL else$%u\n"
 
+           // bool
+           "JUMPIFNEQ else$%u GF@tmp1 string@bool\n"
+           "PUSHS bool@true\n"
+           "JUMPIFEQS else$%u\n"
+           "PUSHS string@false\n"
+           "RETURN\n"
+           "LABEL else$%u\n"
+           "PUSHS string@true\n"
+           "RETURN\n"
+           "LABEL else$%u\n"
+
            // nil
            "POPS GF@tmp2\n"
            "PUSHS string@()\n"
@@ -609,17 +708,24 @@ static void gen_builtin_funcs(void) {
            if_counter + 1,
            if_counter + 1,
            if_counter + 2,
-           if_counter + 2);
-    if_counter += 3;
+           if_counter + 2,
+           if_counter + 3,
+           if_counter + 4,
+           if_counter + 4,
+           if_counter + 3);
+    if_counter += 5;
 
     // toInt(value: Double): Int
+    // Int.toInt: Int
     printf("LABEL toInt\n"
            "PUSHS LF@value\n"
            "FLOAT2INTS\n"
            "RETURN\n");
 
     // strLength(value: String): Int
+    // String.length: Int
     printf("LABEL strLength\n"
+           "LABEL length\n" // VALMEM
            "STRLEN GF@tmp1 LF@value\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n");
@@ -713,4 +819,25 @@ static void gen_builtin_funcs(void) {
            "PUSHS LF@code\n"
            "INT2CHARS\n"
            "RETURN\n");
+
+    // Double.floor: Double
+    printf("LABEL floor\n"
+           "FLOAT2INT GF@tmp1 LF@value\n"
+           "INT2FLOAT GF@tmp1 GF@tmp1\n"
+
+           // if truncating up
+           "LT GF@tmp2 LF@value GF@tmp1\n"
+           "JUMPIFNEQ else$%u GF@tmp2 bool@true\n"
+
+           // then value =- 1
+           "SUB GF@tmp1 GF@tmp1 float@%a\n"
+
+           // else
+           "LABEL else$%u\n"
+           "PUSHS GF@tmp1\n"
+           "RETURN\n",
+           if_counter,
+           1.0f,
+           if_counter);
+    if_counter++;
 }
