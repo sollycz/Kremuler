@@ -12,6 +12,7 @@ header-includes:
   - \usepackage{xcolor}
   - \usepackage{colortbl}
   - \usepackage{pdflscape}
+  - \usepackage{tabularx}
 ---
 
 \begin{titlepage}
@@ -58,6 +59,62 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 \newpage
 
 # Práce v týmu
+
+Časový plán jsme si vytvořili hned po sestavení týmu na první schůzce. Obsahoval rozdělení etap vývoje, termínů pro jednotlivé ucelené celky překladače a časovou rezervu.
+Plán jsem museli několikrát upravit, díky časové rezervě jsme vše stihli.
+
+
+Na první schůzce bylo vymyšleno rozhraní AST, pro propojení jednotlivých částí. V týmu jsme vytvořili dvojice, které si navzájem kontrolovali kód. 
+
+## Rozdělení práce
+ - Oleksandr Teslja
+   - Syntaktický analyzátor se rekurzivním sestupem a abstraktní syntaktický strom.
+
+ - David Zoblivý
+   - Lexikální analyzátor a syntaktická precedenční analýza.
+
+ - Filip Radulovič
+   - Sémantická analýza a tabulka symbolů.
+
+ - Tomáš Neckař
+   - Generátor cílového kódu a vestavěných funkcí.
+
+Na dokumentaci a testování jednotlivých částí v rámci kontrolovy kódu se podílel celý tým.
+
+# Využití AI
+Na začátku jsme se v týmu dohodli na kultuře používání AI. LLM byly využívány na:
+
+ - vysvětlení nejasných částí specifikace popřípadě funkčnosti jazyka Scala
+ - generování testovacích skriptů na konkrétní testovací případy
+ - zapojení do procesu kontroly kódu
+ - vytvoření jednoduchého Makefile
+
+## Popis modulů
+
+```{=latex}
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\textbf{Modul} & \textbf{Popis} \\ \hline\hline
+\texttt{main.c} & Vstupní bod překladače, postupně volá jednotlivé části a při chybě vrátí návratový kód. \\ \hline
+\texttt{token.h} & \\ \hline
+\texttt{types.h} & \\ \hline
+\texttt{scanner.c/.h} & \\ \hline
+\texttt{scanner\_buffer.c/.h} & \\ \hline
+\texttt{parser.c/.h} & \\ \hline
+\texttt{precedence\_parser.c/.h} & \\ \hline
+\texttt{precedence\_stack.c/.h} & \\ \hline
+\texttt{ast.c/.h} & \\ \hline
+\texttt{hashtable.c/.h} & ADT obecné hashovací tabulky s otevřeným adresováním. Dle potřeby zvětšuje či přehashuje tabulku. \\ \hline
+\texttt{symtable.c/.h} & ADT tabulky symbolů využívající hashovací tabulku a hashovací funkci djb2. Uchovává informace o funkcích a proměnných, stará se o rozsahy platnosti a přetížení funkcí či proměnných. \\ \hline
+\texttt{semantic.c/.h} & Dvouprůchodový sémantický analyzátor. V prvním průchodu registruje všechny funkce, ve druhém kontroluje jejich těla. \\ \hline
+\texttt{code\_generator.c/.h} & Generátor cílového kódu, který post-order průchodem AST vypisuje na stdout program v IFJcode26 včetně vestavěných funkcí. \\ \hline
+\end{tabularx}
+\caption{Popis modulů}
+\end{table}
+```
 
 \newpage
 
