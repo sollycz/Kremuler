@@ -11,6 +11,7 @@ header-includes:
   - \usepackage{array}
   - \usepackage{xcolor}
   - \usepackage{colortbl}
+  - \usepackage{pdflscape}
 ---
 
 \begin{titlepage}
@@ -64,6 +65,33 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 Generátor rekurzivně prochází AST od hlavního uzlu AST_PROGRAM. Podpůrně také využívá tabulku symbolů pro zjistění dodatečných informací o daných funkcích.
 Výrazy jsou vyhodnocovány post-order průchodem na datovém zásobníku. Příkazy jsou pokud možno také vyhodnocovány na zásobníku, případně používají pomocné globální proměnné. Argumenty jsou předávány přes nově vytvořený lokální rámec pro volanou funkci, hodnota je pak vrácená přes datový zásobník.
 
+```{=latex}
+\newgeometry{margin=12mm}
+\begin{landscape}
+```
+
+# Diagram lexikálního analyzátoru
+
+```{=latex}
+\thispagestyle{empty}
+\noindent\makebox[\linewidth][c]{\includegraphics[width=\linewidth,height=0.91\textheight,keepaspectratio,trim=7mm 7mm 7mm 7mm,clip]{automat_hlavni_diagram.pdf}}\par
+\vfill
+{\centering\thepage\par}
+\newpage
+```
+
+# Diagram interpolovaných řetězců
+
+```{=latex}
+\thispagestyle{empty}
+\begin{center}
+\includegraphics[width=\linewidth,height=0.82\textheight,keepaspectratio]{automat_interpolateds_diagram.pdf}
+\end{center}
+\vfill
+{\centering\thepage\par}
+\end{landscape}
+\restoregeometry
+```
 
 # Precedenční tabulka
 
