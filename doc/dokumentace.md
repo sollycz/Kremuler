@@ -32,7 +32,7 @@ header-includes:
 
 {\large
 \begin{tabular}{l l l | l}
-Oleksandr Teslja & (xtesljo00) & 282245 & 25 \% \\
+\textbf{Oleksandr Teslja} & (xtesljo00) & 282245 & 25 \% \\
 David Zoblivý    & (xzoblid00) & 281803 & 25 \% \\
 Filip Radulovič  & (xradulf00) & 282100 & 25 \% \\
 Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
@@ -135,3 +135,9 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 \end{center}
 \endgroup
 ```
+
+\newpage
+
+# Reference
+
+1. YIGIT, Ozan S. *Hash Functions* [online]. [N.d.]. Algoritmus djb2. Dostupné z: <http://www.cse.yorku.ca/~oz/hash.html>.
