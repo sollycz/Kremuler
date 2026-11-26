@@ -67,6 +67,24 @@ Výrazy jsou vyhodnocovány post-order průchodem na datovém zásobníku. Pří
 
 \newpage
 
+```{=latex}
+\newgeometry{margin=12mm}
+\begin{landscape}
+```
+
+# Blokové schéma překladače
+
+```{=latex}
+\thispagestyle{empty}
+\begin{center}
+\includegraphics[width=\linewidth,height=0.82\textheight,keepaspectratio]{blokove_schema.pdf}
+\end{center}
+\vfill
+{\centering\thepage\par}
+\end{landscape}
+\restoregeometry
+```
+
 # Lexikální analýza
 
 ## Implementace
