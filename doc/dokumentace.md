@@ -65,12 +65,29 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 Generátor rekurzivně prochází AST od hlavního uzlu AST_PROGRAM. Podpůrně také využívá tabulku symbolů pro zjistění dodatečných informací o daných funkcích.
 Výrazy jsou vyhodnocovány post-order průchodem na datovém zásobníku. Příkazy jsou pokud možno také vyhodnocovány na zásobníku, případně používají pomocné globální proměnné. Argumenty jsou předávány přes nově vytvořený lokální rámec pro volanou funkci, hodnota je pak vrácená přes datový zásobník.
 
+\newpage
+
+# Lexikální analýza
+
+## Implementace
+
+Lexikální analyzátor (Scanner) čte zdrojový kód ze standardního vstupu, rozpoznává jednotlivé lexémy a předává je syntaktickému analyzátoru ve formě tokenů. Základem implementace je deterministický konečný automat.
+
+- Scanner rozlišuje identifikátory od klíčových slov.
+- Počítá úvodní mezery určující odsazení řádku. Zjištěné odsazení předává parseru jako součást tokenu.
+- Dynamicky alokovaná vyrovnávací paměť se používá k ukládání znaků identifikátorů, číselných a řetězcových literálů.
+- Hloubku vnořených komentářů sleduje pomocí čítače.
+- Pro podporu vnořených interpolovaných řetězců používá zásobník stavů interpolace.
+- V tokenech se uchovávají informace o čísle řádku a sloupce pro přesnější lokalizaci chyb ve zdrojovém kódu.
+
+Při chybě scanner vypíše její popis na standardní chybový výstup a vrátí příslušný chybový kód.
+
 ```{=latex}
 \newgeometry{margin=12mm}
 \begin{landscape}
 ```
 
-# Diagram lexikálního analyzátoru
+## Diagram lexikálního analyzátoru
 
 ```{=latex}
 \thispagestyle{empty}
@@ -80,7 +97,7 @@ Výrazy jsou vyhodnocovány post-order průchodem na datovém zásobníku. Pří
 \newpage
 ```
 
-# Diagram interpolovaných řetězců
+## Diagram interpolovaných řetězců
 
 ```{=latex}
 \thispagestyle{empty}
