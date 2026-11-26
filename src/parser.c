@@ -210,6 +210,8 @@ ParseResult parse_if_expression(Parser *p, AstNode **out) {
         }
     }
 
+    ast_mark_if_expression(node);
+
     *out = node;
     return PARSE_OK;
 }

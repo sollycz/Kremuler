@@ -1085,6 +1085,8 @@ static sem_res_t check_function(stab_func *fn) {
             if (res != SEM_OK) {
                 return res;
             }
+
+            ast_mark_if_expression(last);
         }
     }
 

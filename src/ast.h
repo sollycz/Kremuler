@@ -116,6 +116,7 @@ struct AstNode {
             AstNode *condition;
             AstNode *then_block;
             AstNode *else_block;
+            bool is_expression; // a helper bool for codegen, whether the if statement is an expression or a statement
         } if_statement;
 
         struct {
@@ -175,5 +176,7 @@ struct AstNode {
 AstNode *ast_new(AstKind kind, unsigned int line);
 bool ast_list_push(AstNodeList *list, AstNode *node);
 void ast_free(AstNode *node);
+
+void ast_mark_if_expression(AstNode *node);
 
 #endif

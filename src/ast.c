@@ -49,6 +49,26 @@ static void ast_list_free(AstNodeList *list) {
     list->count = 0;
 }
 
+static void ast_mark_branch_expression(AstNode *branch) {
+    if (branch == NULL) {
+        return;
+    }
+
+    AstNodeList *statements = &branch->as.block.statements;
+    AstNode *last = statements->items[statements->count - 1];
+    if (last->node_kind == AST_IF) {
+        ast_mark_if_expression(last);
+    }
+}
+
+// marks the if as an expression, together with the ifs at the end of its branches
+void ast_mark_if_expression(AstNode *node) {
+    node->as.if_statement.is_expression = true;
+
+    ast_mark_branch_expression(node->as.if_statement.then_block);
+    ast_mark_branch_expression(node->as.if_statement.else_block);
+}
+
 // frees the specified node and its children based on its kind
 // (will free the whole AST if called on the root node)
 void ast_free(AstNode *node) {
