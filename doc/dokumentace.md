@@ -59,6 +59,11 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 
 \newpage
 
+# Generátor kódu
+Generátor rekurzivně prochází AST od hlavního uzlu AST_PROGRAM. Podpůrně také využívá tabulku symbolů pro zjistění dodatečných informací o daných funkcích.
+Výrazy jsou vyhodnocovány post-order průchodem na datovém zásobníku. Příkazy jsou pokud možno také vyhodnocovány na zásobníku, případně používají pomocné globální proměnné. Argumenty jsou předávány přes nově vytvořený lokální rámec pro volanou funkci, hodnota je pak vrácená přes datový zásobník.
+
+
 # Precedenční tabulka
 
 ```{=latex}
