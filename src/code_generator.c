@@ -185,30 +185,51 @@ static void gen_function(AstNode *node) {
     }
 }
 
-// count all "for" statements inside block (recursively)
-static unsigned count_fors(AstNode *block) {
-    unsigned count = 0;
-    for (size_t i = 0; i < block->as.block.statements.count; i++) {
-        switch (block->as.block.statements.items[i]->node_kind) {
-        case AST_WHILE:
-            count += count_fors(block->as.block.statements.items[i]->as.while_statement.block);
-            break;
-        case AST_FOR:
-            count++;
-            count += count_fors(block->as.block.statements.items[i]->as.for_statement.block);
-            break;
-        case AST_IF:
-            count += count_fors(block->as.block.statements.items[i]->as.if_statement.then_block);
-            if (block->as.block.statements.items[i]->as.if_statement.else_block != NULL) {
-                count += count_fors(block->as.block.statements.items[i]->as.if_statement.else_block);
-            }
-            break;
-        default:
-            // do nothing - there is no block inside
-            break;
-        }
+// count all "for" statements inside the node (recursively)
+static unsigned count_fors(AstNode *node) {
+    if (node == NULL) {
+        return 0;
     }
-    return count;
+
+    unsigned count = 0;
+    switch (node->node_kind) {
+    case AST_BLOCK:
+        for (size_t i = 0; i < node->as.block.statements.count; i++) {
+            count += count_fors(node->as.block.statements.items[i]);
+        }
+        return count;
+    case AST_WHILE:
+        return count_fors(node->as.while_statement.condition) + count_fors(node->as.while_statement.block);
+    case AST_FOR:
+        for (size_t i = 0; i < node->as.for_statement.guards.count; i++) {
+            count += count_fors(node->as.for_statement.guards.items[i]);
+        }
+        return 1 + count + count_fors(node->as.for_statement.from) + count_fors(node->as.for_statement.to) +
+               count_fors(node->as.for_statement.step) + count_fors(node->as.for_statement.block);
+    case AST_IF:
+        return count_fors(node->as.if_statement.condition) + count_fors(node->as.if_statement.then_block) +
+               count_fors(node->as.if_statement.else_block);
+    case AST_VARIABLE_DEFINITION:
+        return count_fors(node->as.variable_definition.value);
+    case AST_ASSIGN:
+        return count_fors(node->as.assign.value);
+    case AST_RETURN:
+        return count_fors(node->as.return_statement.value);
+    case AST_EXPRESSION_STATEMENT:
+        return count_fors(node->as.expression_statement.expression);
+    case AST_UNARY_OPERATOR:
+        return count_fors(node->as.unary.operand);
+    case AST_BINARY_OPERATOR:
+        return count_fors(node->as.binary.left) + count_fors(node->as.binary.right);
+    case AST_CALL:
+        for (size_t i = 0; i < node->as.call.args.count; i++) {
+            count += count_fors(node->as.call.args.items[i]);
+        }
+        return count;
+    default:
+        // literals, identifiers
+        return 0;
+    }
 }
 
 // generate all statements of a block sequentially
