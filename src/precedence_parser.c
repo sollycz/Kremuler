@@ -531,6 +531,13 @@ static ParseResult reduce_expression(PrecedenceStack *stack) {
     return PARSE_SYNTAX_ERROR;
 }
 
+/**
+ * @brief parses one parenthesized argument list and appends its arguments to a call
+ * @param[in, out] parser positioned on the opening parenthesis
+ * @param[in, out] node AstNode for receiving the arguments
+ * @param[in] list_index index of the argument list
+ * @return PARSE_OK on success, otherwise a parser error code
+ */
 static ParseResult parse_argument_list(Parser *parser, AstNode *node, size_t list_index) {
     Token *token = &parser->current;
 
@@ -579,6 +586,12 @@ static ParseResult parse_argument_list(Parser *parser, AstNode *node, size_t lis
     }
 }
 
+/**
+ * @brief processes every argument list of a function
+ * @param[in, out] parser positioned at the token following the call name
+ * @param[in, out] node AstNode for receiving the arguments
+ * @return PARSE_OK on success, otherwise parser error code
+ */
 static ParseResult parse_argument_lists(Parser *parser, AstNode *node) {
     Token *token = &parser->current;
 
