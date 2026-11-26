@@ -308,3 +308,4 @@ Vyhledávací struktura je implementována variantou 2 (hashovací tabulka je im
 # Reference {.unnumbered}
 
 1. Hash Functions. Online. Cse.yorku.ca/~oz/hash.html. B.r. Dostupné z: <http://www.cse.yorku.ca/~oz/hash.html>. [cit. 2026-11-26].
+2. C reference. Online. Cppreference.com. Dostupné z: <https://www.cppreference.com/c>. [cit. 2026-11-26].
