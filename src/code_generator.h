@@ -10,6 +10,8 @@
 #include "ast.h"
 #include "symtable.h"
 
+// outputs raw IFJcode26 instructions to stdout
+// based on the inputted AST and symtable
 void generate_code(AstNode *ast, stab *st);
 
 #endif
