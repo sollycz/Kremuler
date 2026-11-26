@@ -303,6 +303,17 @@ Každý blok, větev if a tělo cyklu má vlastní rozsah platnosti. Parametry, 
 ## Vyhledávací struktura
 Vyhledávací struktura je implementována variantou 2 (hashovací tabulka je implementována jako ADT a tabulka symbolů ji následně interně využívá) a stará se o udržování platných rozsahů, kontrolu redefinic funkcí a proměnných. Pro ukládání informací o jednotlivých funkcích je využívána hashovací tabulka, každý záznam funkce obsahuje zásobník jejích proměnných. Tato struktura se následně předává generátoru kódu.
 
+# Generátor kódu
+Generátor rekurzivně prochází AST od hlavního uzlu `AST_PROGRAM`. Podpůrně také využívá tabulku symbolů pro zjištění dodatečných informací o daných funkcích. Na začátku definuje pomocné globální proměnné a poté zavolá funkci označenou anotací `@main`. Generuje zároveň také vestavěné funkce, které připojí ke každému programu na konec.
+
+## Vyhodnocování
+Výrazy (literály, proměnné, operace, volání) jsou vyhodnocovány post-order průchodem na datovém zásobníku. Příkazy (podmínky, cykly, přiřazení, návrat, ...) obecně z datového zásobníku berou/konzumují vyhodnocené výrazy a ty ukládají do proměnných/podle nich se rozhodují.
+
+Vyhodnocené samotné výrazy na řádku (volání funkce, `Unit` literál značící prázdný blok, ...) se musí specificky odstranit ze zásobníku, aby na něm nezůstala nepoužitá data a nekazila tak další vyhodnocování výrazů. To ale neplatí v případech, kdy je nutné vrátit hodnotu na konci určitých bloků (implicitní návratová hodnota funkce/if výrazu).
+
+## Volací konvence
+Volající postupně vyhodnotí všechny argumenty na datový zásobník, vytvoří nový dočasný rámec, v němž definuje parametry volané funkce jako proměnné, a v opačném pořadí ze zásobníku přiřadí hodnoty do argumentových proměnných. Dočasný rámec přesune na vrchol zásobníku rámců, zavolá danou funkci a po návratu z funkce odebere rámec zavolané funkce z vrcholu zásobníku. Návratová hodnota je předána na vrchol datového zásobníku pro další použití.
+
 \newpage
 
 # Rozšíření
