@@ -249,6 +249,13 @@ static void gen_block(AstNode *node) {
             printf("POPS GF@tmp1\n");
         }
     }
+
+    // last statement of a returning block doesn't push a value on stack (val, assign, while, for) -> push Unit
+    AstNode *last = node->as.block.statements.items[node->as.block.statements.count - 1];
+    if (keep_block_value_local && (last->node_kind == AST_VARIABLE_DEFINITION || last->node_kind == AST_ASSIGN ||
+                                   last->node_kind == AST_WHILE || last->node_kind == AST_FOR)) {
+        printf("PUSHS nil@nil\n");
+    }
 }
 
 // generate while cycle
