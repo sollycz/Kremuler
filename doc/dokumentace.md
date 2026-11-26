@@ -4,6 +4,7 @@ papersize: a4
 geometry: margin=2.5cm
 fontsize: 11pt
 mainfont: TeX Gyre Termes
+mathfont: TeX Gyre Termes Math
 header-includes:
   - \usepackage{graphicx}
   - \usepackage{array}
@@ -68,16 +69,18 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 \begingroup
 \setlength{\parindent}{0pt}
 \setlength{\tabcolsep}{0pt}
-{\sffamily\small\textbf{Řádek:} nejvrchnější terminál na zásobníku.\par
+{\small\textbf{Řádek:} nejvrchnější terminál na zásobníku.\par
 \textbf{Sloupec:} následující symbol na vstupu.}\par\vspace{4mm}
 \begingroup
 \fontsize{9}{12}\selectfont
 \renewcommand{\arraystretch}{1}
 \setlength{\extrarowheight}{3.2mm}
+\setlength{\arrayrulewidth}{0.6pt}
+\setlength{\cellwidth}{\dimexpr(\textwidth-21\arrayrulewidth)/20\relax}
 \begin{tabular}{|*{20}{C|}}
 \hline
 \rowcolor{gray!18}
-\cellcolor{gray!18} & \texttt{+} & \texttt{-} & \texttt{*} & \texttt{/} & \texttt{<} & \texttt{<=} & \texttt{>} & \texttt{>=} & \texttt{==} & \texttt{!=} & \texttt{u+} & \texttt{u-} & \texttt{!} & \texttt{\&\&} & \texttt{||} & \texttt{(} & \texttt{)} & \texttt{i} & \texttt{\$} \\ \hline
+ & \texttt{+} & \texttt{-} & \texttt{*} & \texttt{/} & \texttt{<} & \texttt{<=} & \texttt{>} & \texttt{>=} & \texttt{==} & \texttt{!=} & \texttt{u+} & \texttt{u-} & \texttt{!} & \texttt{\&\&} & \texttt{||} & \texttt{(} & \texttt{)} & \texttt{i} & \texttt{\$} \\ \hline
 \cellcolor{gray!12}\texttt{+} & $>$ & $>$ & $<$ & $<$ & $>$ & $>$ & $>$ & $>$ & $>$ & $>$ & $<$ & $<$ & $<$ & $>$ & $>$ & $<$ & $>$ & $<$ & $>$ \\ \hline
 \cellcolor{gray!12}\texttt{-} & $>$ & $>$ & $<$ & $<$ & $>$ & $>$ & $>$ & $>$ & $>$ & $>$ & $<$ & $<$ & $<$ & $>$ & $>$ & $<$ & $>$ & $<$ & $>$ \\ \hline
 \cellcolor{gray!12}\texttt{*} & $>$ & $>$ & $>$ & $>$ & $>$ & $>$ & $>$ & $>$ & $>$ & $>$ & $<$ & $<$ & $<$ & $>$ & $>$ & $<$ & $>$ & $<$ & $>$ \\ \hline
@@ -100,7 +103,7 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 \end{tabular}
 \endgroup
 \par\vspace{3mm}
-{\sffamily\small
+{\small
 \(i\) = operand (identifikátor nebo literál);\quad
 \texttt{u+}, \texttt{u-} = unární plus a mínus;\quad
 \texttt{\$} = hranice výrazu.\par
