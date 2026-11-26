@@ -818,7 +818,8 @@ static void gen_call(AstNode *node) {
     // call
     printf("PUSHFRAME\n");
     if (!node->as.call.is_member || callee->is_builtin) {
-        printf("CALL %s\n", node->as.call.name);
+        // builtin labels start with $ so they don't collide with user funcs
+        printf("CALL %s%s\n", callee->is_builtin ? "$" : "", node->as.call.name);
     } else {
         printf("CALL $EXTKW$%s$%u\n", node->as.call.name, callee->extends.type);
     }
@@ -829,7 +830,7 @@ static void gen_call(AstNode *node) {
 // builtin params use names without id (e.g.: LF@value)
 static void gen_builtin_funcs(void) {
     // print(value: Any): Unit
-    printf("LABEL print\n"
+    printf("LABEL $print\n"
            "PUSHS nil@nil\n"
 
            // check for nil
@@ -844,7 +845,7 @@ static void gen_builtin_funcs(void) {
            "RETURN\n");
 
     // readLine(): String
-    printf("LABEL readLine\n"
+    printf("LABEL $readLine\n"
            "READ GF@tmp1 string\n"
 
            "JUMPIFEQ else$readLine GF@tmp1 nil@nil\n"
@@ -856,7 +857,7 @@ static void gen_builtin_funcs(void) {
            "RETURN\n");
 
     // readInt(): Int
-    printf("LABEL readInt\n"
+    printf("LABEL $readInt\n"
            "READ GF@tmp1 int\n"
 
            "JUMPIFEQ else$readInt GF@tmp1 nil@nil\n"
@@ -868,7 +869,7 @@ static void gen_builtin_funcs(void) {
            "RETURN\n");
 
     // readDouble(): Double
-    printf("LABEL readDouble\n"
+    printf("LABEL $readDouble\n"
            "READ GF@tmp1 float\n"
 
            "JUMPIFEQ else$readDouble GF@tmp1 nil@nil\n"
@@ -881,7 +882,7 @@ static void gen_builtin_funcs(void) {
            0.0f);
 
     // readBoolean(): Bool
-    printf("LABEL readBoolean\n"
+    printf("LABEL $readBoolean\n"
            "READ GF@tmp1 bool\n"
 
            "JUMPIFEQ else$readBoolean GF@tmp1 nil@nil\n"
@@ -894,8 +895,8 @@ static void gen_builtin_funcs(void) {
 
     // toStr(value: Any): String
     // toString: String
-    printf("LABEL toStr\n"
-           "LABEL toString\n" // VALMEM
+    printf("LABEL $toStr\n"
+           "LABEL $toString\n" // VALMEM
            "TYPE GF@tmp1 LF@value\n"
            "PUSHS LF@value\n"
 
@@ -934,21 +935,21 @@ static void gen_builtin_funcs(void) {
 
     // toInt(value: Double): Int
     // Int.toInt: Int
-    printf("LABEL toInt\n"
+    printf("LABEL $toInt\n"
            "PUSHS LF@value\n"
            "FLOAT2INTS\n"
            "RETURN\n");
 
     // strLength(value: String): Int
     // String.length: Int
-    printf("LABEL strLength\n"
-           "LABEL length\n" // VALMEM
+    printf("LABEL $strLength\n"
+           "LABEL $length\n" // VALMEM
            "STRLEN GF@tmp1 LF@value\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n");
 
     // subStr(value: String, start: Int, end: Int): String
-    printf("LABEL subStr\n"
+    printf("LABEL $subStr\n"
 
            // start < 0
            "LT GF@tmp1 LF@start int@0\n"
@@ -993,7 +994,7 @@ static void gen_builtin_funcs(void) {
            "EXIT int@40\n"); // exit 40 - runtime error
 
     // ord(value: String, index: Int): Int
-    printf("LABEL ord\n"
+    printf("LABEL $ord\n"
 
            // index < 0
            "LT GF@tmp1 LF@index int@0\n"
@@ -1014,13 +1015,13 @@ static void gen_builtin_funcs(void) {
            "RETURN\n");
 
     // chr(code: Int): String
-    printf("LABEL chr\n"
+    printf("LABEL $chr\n"
            "PUSHS LF@code\n"
            "INT2CHARS\n"
            "RETURN\n");
 
     // Double.floor: Double
-    printf("LABEL floor\n"
+    printf("LABEL $floor\n"
            "FLOAT2INT GF@tmp1 LF@value\n"
            "INT2FLOAT GF@tmp1 GF@tmp1\n"
 
