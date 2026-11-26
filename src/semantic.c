@@ -69,7 +69,7 @@ static sem_res_t stab_res_convert(stab_res_t res) {
 }
 
 // Returns last statement from block.
-static const AstNode *last_statement(const AstNode *block) {
+static AstNode *last_statement(const AstNode *block) {
     const AstNodeList *statements = &block->as.block.statements;
     return statements->items[statements->count - 1];
 }
@@ -725,11 +725,13 @@ static sem_res_t check_while(AstNode *node) {
 // Returns result type of an already checked block, given by its last statement.
 // Returns SEM_OK if successful, otherwise error code.
 static sem_res_t block_value_type(const AstNode *block, DataType *out) {
-    const AstNode *last = last_statement(block);
+    AstNode *last = last_statement(block);
 
     // nested if has as the last statement has type Unit -> get it value from its branches
     if (last->node_kind == AST_IF) {
-        return if_value_type(last, out);
+        sem_res_t res = if_value_type(last, &last->type);
+        *out = last->type;
+        return res;
     }
 
     *out = last->type;
