@@ -91,12 +91,12 @@ Výrazy jsou vyhodnocovány post-order průchodem na datovém zásobníku. Pří
 
 Lexikální analyzátor (Scanner) čte zdrojový kód ze standardního vstupu, rozpoznává jednotlivé lexémy a předává je syntaktickému analyzátoru ve formě tokenů. Základem implementace je deterministický konečný automat.
 
-- Scanner rozlišuje identifikátory od klíčových slov.
-- Počítá úvodní mezery určující odsazení řádku. Zjištěné odsazení předává parseru jako součást tokenu.
+- Scanner čte ze standardního vstupu v případě, kdy parser požádá o další token.
 - Dynamicky alokovaná vyrovnávací paměť se používá k ukládání znaků identifikátorů, číselných a řetězcových literálů.
+- Rozlišuje identifikátory od klíčových slov.
+- Počítá úvodní mezery určující odsazení řádku. Zjištěné odsazení předává parseru jako součást tokenu. Také se v tokenech nachází informace o pozici ve zdrojovém kódu pro přesnější lokalizaci chyb.
 - Hloubku vnořených komentářů sleduje pomocí čítače.
 - Pro podporu vnořených interpolovaných řetězců používá zásobník stavů interpolace.
-- V tokenech se uchovávají informace o čísle řádku a sloupce pro přesnější lokalizaci chyb ve zdrojovém kódu.
 
 Při chybě scanner vypíše její popis na standardní chybový výstup a vrátí příslušný chybový kód.
 
@@ -132,14 +132,14 @@ Při chybě scanner vypíše její popis na standardní chybový výstup a vrát
 
 ## Implementace
 
-Precedenční analyzátor získává tokeny prostřednictvím syntaktického analyzátoru (parser) a zpracovává výrazy podle precedenční tabulky a redukčních pravidel.
+Precedenční analyzátor získává tokeny prostřednictvím syntaktického analyzátoru (parseru) a zpracovává výrazy podle precedenční tabulky a redukčních pravidel.
 
 - Využívá dynamicky alokovaný zásobník, na který ukládá terminály a výrazy.
-- Jako první zavolá parser precedenční analyzátor, o další tokeny už žádá prostřednictvím parseru precedenční analyzátor.
-- Symbol dna zásobníku označuje $, zároveň je symbol $ označení pro konec výrazu
+- Parser nejprve zavolá precedenční analyzátor, o další tokeny už žádá prostřednictvím parseru precedenční analyzátor.
+- Symbol dna zásobníku označuje $, zároveň je symbol $ označení pro konec výrazu.
 - Nejvrchnější terminál na zásobníku se porovná s aktuálním symbolem na vstupu a podle jejich vztahu v precedenční tabulce se provede operace redukce nebo operace vložení vstupního symbolu na zásobník.
 - Při redukcích se rovnou vytváří abstraktní syntaktický strom (AST).
-- Kořen se po úspěšném zpracování předá zpět parseru.
+- Kořen AST se po úspěšném zpracování předá zpět parseru.
 - Pokud je místo operandu klíčové slovo if, tak precedenční analyzátor zavolá funkci parseru, která zpracuje celý výraz (if..then..else) a vrátí jeho AST, které se vloží jako výraz na zásobník.
 
 Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslušný chybový kód.
