@@ -25,10 +25,10 @@ typedef enum {
 // initializes the analyser with a symtable created by stab_new()
 // stab should be held by main.c for easier passing to code gen later
 // st cannot be NULL
-void semantic_init(stab *st);
+void semantic_init(stab* st);
 
 // runs semantic analysis of the provided program ast
 // return sem_res_t return code
-sem_res_t semantic_analyse(AstNode *program);
+sem_res_t semantic_analyse(AstNode* program);
 
 #endif // SEMANTIC_H

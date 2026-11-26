@@ -6,13 +6,13 @@
  */
 
 #include "precedence_stack.h"
-#include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #define STACK_INIT_CAPACITY 16
 
-bool stack_init(PrecedenceStack *stack) 
+bool stack_init(PrecedenceStack* stack)
 {
     stack->length = 0;
     stack->capacity = 0;
@@ -26,7 +26,7 @@ bool stack_init(PrecedenceStack *stack)
     return true;
 }
 
-void stack_free(PrecedenceStack *stack) 
+void stack_free(PrecedenceStack* stack)
 {
     free(stack->items);
     stack->items = NULL;
@@ -34,7 +34,7 @@ void stack_free(PrecedenceStack *stack)
     stack->length = 0;
 }
 
-static bool stack_increase(PrecedenceStack *stack)
+static bool stack_increase(PrecedenceStack* stack)
 {
     if (stack->capacity > SIZE_MAX / 2 / sizeof(StackItem)) {
         return false;
@@ -42,7 +42,7 @@ static bool stack_increase(PrecedenceStack *stack)
 
     size_t new_capacity = stack->capacity * 2;
 
-    StackItem *new_items = realloc(stack->items, new_capacity * sizeof(StackItem));
+    StackItem* new_items = realloc(stack->items, new_capacity * sizeof(StackItem));
     if (new_items == NULL) {
         return false;
     }
@@ -53,7 +53,7 @@ static bool stack_increase(PrecedenceStack *stack)
     return true;
 }
 
-bool stack_push(PrecedenceStack *stack, StackItem item) 
+bool stack_push(PrecedenceStack* stack, StackItem item)
 {
     if (stack->length == stack->capacity) {
         bool result = stack_increase(stack);
@@ -68,7 +68,7 @@ bool stack_push(PrecedenceStack *stack, StackItem item)
     return true;
 }
 
-bool stack_pop(PrecedenceStack *stack, StackItem *item)
+bool stack_pop(PrecedenceStack* stack, StackItem* item)
 {
     if (stack->length == 0) {
         return false;
@@ -80,7 +80,7 @@ bool stack_pop(PrecedenceStack *stack, StackItem *item)
     return true;
 }
 
-bool stack_take_top_terminal(const PrecedenceStack *stack, size_t *index) 
+bool stack_take_top_terminal(const PrecedenceStack* stack, size_t* index)
 {
     size_t tmp = stack->length;
 
@@ -95,7 +95,7 @@ bool stack_take_top_terminal(const PrecedenceStack *stack, size_t *index)
     return false;
 }
 
-bool stack_take_top_boundary(const PrecedenceStack *stack, size_t *index) 
+bool stack_take_top_boundary(const PrecedenceStack* stack, size_t* index)
 {
     size_t tmp = stack->length;
 
@@ -110,7 +110,7 @@ bool stack_take_top_boundary(const PrecedenceStack *stack, size_t *index)
     return false;
 }
 
-bool stack_insert(PrecedenceStack *stack, size_t index, StackItem item) 
+bool stack_insert(PrecedenceStack* stack, size_t index, StackItem item)
 {
     if (index > stack->length) {
         return false;
@@ -124,12 +124,12 @@ bool stack_insert(PrecedenceStack *stack, size_t index, StackItem item)
     }
 
     size_t tmp = stack->length;
-    while(tmp > index) {
+    while (tmp > index) {
         stack->items[tmp] = stack->items[tmp - 1];
         tmp--;
     }
     stack->items[tmp] = item;
     stack->length++;
-    
+
     return true;
 }

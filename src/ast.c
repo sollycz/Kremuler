@@ -10,8 +10,9 @@
 
 // creates a new AST node
 // (returns NULL on allocation failure)
-AstNode *ast_new(AstKind kind, unsigned int line) {
-    AstNode *node = calloc(1, sizeof(AstNode));
+AstNode* ast_new(AstKind kind, unsigned int line)
+{
+    AstNode* node = calloc(1, sizeof(AstNode));
     if (node == NULL) {
         return NULL;
     }
@@ -24,8 +25,9 @@ AstNode *ast_new(AstKind kind, unsigned int line) {
 
 // adds a node to the end of an AST list
 // (returns false on allocation failure)
-bool ast_list_push(AstNodeList *list, AstNode *node) {
-    AstNode **items = realloc(list->items, (list->count + 1) * sizeof(AstNode *)); // make space for the new node
+bool ast_list_push(AstNodeList* list, AstNode* node)
+{
+    AstNode** items = realloc(list->items, (list->count + 1) * sizeof(AstNode*)); // make space for the new node
 
     if (items == NULL) {
         return false;
@@ -39,7 +41,8 @@ bool ast_list_push(AstNodeList *list, AstNode *node) {
 }
 
 // frees the specified AST list and all of its nodes
-static void ast_list_free(AstNodeList *list) {
+static void ast_list_free(AstNodeList* list)
+{
     for (size_t i = 0; i < list->count; i++) {
         ast_free(list->items[i]);
     }
@@ -49,20 +52,22 @@ static void ast_list_free(AstNodeList *list) {
     list->count = 0;
 }
 
-static void ast_mark_branch_expression(AstNode *branch) {
+static void ast_mark_branch_expression(AstNode* branch)
+{
     if (branch == NULL) {
         return;
     }
 
-    AstNodeList *statements = &branch->as.block.statements;
-    AstNode *last = statements->items[statements->count - 1];
+    AstNodeList* statements = &branch->as.block.statements;
+    AstNode* last = statements->items[statements->count - 1];
     if (last->node_kind == AST_IF) {
         ast_mark_if_expression(last);
     }
 }
 
 // marks the if as an expression, together with the ifs at the end of its branches
-void ast_mark_if_expression(AstNode *node) {
+void ast_mark_if_expression(AstNode* node)
+{
     node->as.if_statement.is_expression = true;
 
     ast_mark_branch_expression(node->as.if_statement.then_block);
@@ -71,7 +76,8 @@ void ast_mark_if_expression(AstNode *node) {
 
 // frees the specified node and its children based on its kind
 // (will free the whole AST if called on the root node)
-void ast_free(AstNode *node) {
+void ast_free(AstNode* node)
+{
     if (node == NULL) {
         return;
     }

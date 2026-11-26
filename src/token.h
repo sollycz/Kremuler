@@ -7,8 +7,8 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum token_type {
     TOK_KW_VAR,
@@ -71,7 +71,7 @@ typedef enum token_type {
 typedef union token_data {
     int64_t num_int_val;
     double num_float_val;
-    char *str_val;
+    char* str_val;
 } TokenData;
 
 typedef struct token {

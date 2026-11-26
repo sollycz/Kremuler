@@ -12,10 +12,12 @@
 #include <stdlib.h>
 
 // out of a 100
-#define HTAB_LOAD_FACTOR 75         // grow when used slots reach this
+#define HTAB_LOAD_FACTOR 75 // grow when used slots reach this
 #define HTAB_DELETED_LOAD_FACTOR 25 // grow / remove (rehash) to restore capacity
 
-typedef enum { SLOT_EMPTY, SLOT_USED, SLOT_DELETED } slot_state_t;
+typedef enum { SLOT_EMPTY,
+    SLOT_USED,
+    SLOT_DELETED } slot_state_t;
 
 typedef struct {
     slot_state_t state;
@@ -25,7 +27,7 @@ typedef struct {
 } htab_slot_t;
 
 struct htab {
-    htab_slot_t *slots;
+    htab_slot_t* slots;
     htab_size_t capacity;
     htab_size_t size;
     htab_size_t used;
@@ -35,8 +37,9 @@ struct htab {
     htab_free_fn value_free;
 };
 
-htab *htab_init(
-    htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free) {
+htab* htab_init(
+    htab_size_t initial_capacity, htab_hash_fn hash, htab_eq_fn eq, htab_free_fn key_free, htab_free_fn value_free)
+{
     assert(hash != NULL);
     assert(eq != NULL);
 
@@ -48,7 +51,7 @@ htab *htab_init(
 
     htab_size_t capacity = initial_capacity;
 
-    htab *ht = malloc(sizeof(*ht));
+    htab* ht = malloc(sizeof(*ht));
     if (ht == NULL) {
         return NULL;
     }
@@ -75,17 +78,19 @@ htab *htab_init(
 }
 
 // frees given slot if htab has free fns set
-static void slot_free(const htab *ht, htab_slot_t *slot) {
+static void slot_free(const htab* ht, htab_slot_t* slot)
+{
     if (ht->key_free != NULL) {
         // recast needed because of const type
-        ht->key_free((void *)slot->key);
+        ht->key_free((void*)slot->key);
     }
     if (ht->value_free != NULL) {
         ht->value_free(slot->value);
     }
 }
 
-void htab_destroy(htab *ht) {
+void htab_destroy(htab* ht)
+{
     if (ht == NULL) {
         return;
     }
@@ -102,13 +107,14 @@ void htab_destroy(htab *ht) {
 
 // linearly probes table, returns true if slot is found and out_slot points to it.
 // if key is not found, returns false and out slot points to the first available slot for insert.
-static bool probe_slots(const htab *ht, htab_key_t key, htab_size_t hash, htab_slot_t **out_slot) {
-    htab_slot_t *deleted_slot = NULL;
+static bool probe_slots(const htab* ht, htab_key_t key, htab_size_t hash, htab_slot_t** out_slot)
+{
+    htab_slot_t* deleted_slot = NULL;
     htab_size_t i = hash % ht->capacity;
 
     // in the worst case scenario go through one full lap
     for (htab_size_t k = 0; k < ht->capacity; k++) {
-        htab_slot_t *s = &ht->slots[i];
+        htab_slot_t* s = &ht->slots[i];
 
         // first empty slot ends the search, the key can not be any further
         if (s->state == SLOT_EMPTY) {
@@ -141,12 +147,13 @@ static bool probe_slots(const htab *ht, htab_key_t key, htab_size_t hash, htab_s
     return false;
 }
 
-bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
+bool htab_get(const htab* ht, htab_key_t key, htab_value_t* out)
+{
     assert(ht != NULL);
 
     htab_size_t hash = ht->hash(key);
 
-    htab_slot_t *ret_slot;
+    htab_slot_t* ret_slot;
     bool ret_bool = probe_slots(ht, key, hash, &ret_slot);
 
     if (ret_bool == false) {
@@ -160,7 +167,8 @@ bool htab_get(const htab *ht, htab_key_t key, htab_value_t *out) {
 
 // resizes slots for new_capacity and clears all deleted slots.
 // return true if successful, otherwise false. (table is left unchanged)
-static bool resize(htab *ht, htab_size_t new_capacity) {
+static bool resize(htab* ht, htab_size_t new_capacity)
+{
     assert(ht->capacity <= new_capacity);
 
     if (new_capacity > SIZE_MAX / sizeof(htab_slot_t)) {
@@ -168,7 +176,7 @@ static bool resize(htab *ht, htab_size_t new_capacity) {
         return false;
     }
 
-    htab_slot_t *new_slots = malloc(new_capacity * sizeof(*new_slots));
+    htab_slot_t* new_slots = malloc(new_capacity * sizeof(*new_slots));
     if (new_slots == NULL) {
         return false;
     }
@@ -177,7 +185,7 @@ static bool resize(htab *ht, htab_size_t new_capacity) {
         new_slots[i].state = SLOT_EMPTY;
     }
 
-    htab_slot_t *old_slot;
+    htab_slot_t* old_slot;
     htab_size_t new_index;
     for (htab_size_t i = 0; i < ht->capacity; i++) {
         old_slot = &ht->slots[i];
@@ -201,12 +209,13 @@ static bool resize(htab *ht, htab_size_t new_capacity) {
     return true;
 }
 
-htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
+htab_res_t htab_insert(htab* ht, htab_key_t key, htab_value_t value)
+{
     assert(ht != NULL);
 
     htab_size_t hash = ht->hash(key);
 
-    htab_slot_t *slot;
+    htab_slot_t* slot;
     if (probe_slots(ht, key, hash, &slot)) {
         return HTAB_EXISTS;
     }
@@ -252,12 +261,13 @@ htab_res_t htab_insert(htab *ht, htab_key_t key, htab_value_t value) {
     return HTAB_OK;
 }
 
-bool htab_remove(htab *ht, htab_key_t key) {
+bool htab_remove(htab* ht, htab_key_t key)
+{
     assert(ht != NULL);
 
     htab_size_t hash = ht->hash(key);
 
-    htab_slot_t *slot;
+    htab_slot_t* slot;
     if (!probe_slots(ht, key, hash, &slot)) {
         return false;
     }
@@ -274,7 +284,8 @@ bool htab_remove(htab *ht, htab_key_t key) {
     return true;
 }
 
-htab_size_t htab_size(const htab *ht) {
+htab_size_t htab_size(const htab* ht)
+{
     assert(ht != NULL);
     return ht->size;
 }

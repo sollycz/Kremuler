@@ -14,27 +14,28 @@
 
 // entry of the scope stack, doesnt own anything (owned by function.locals)
 typedef struct scope {
-    htab *vars;
-    struct scope *parent;
-    stab_func *func;
+    htab* vars;
+    struct scope* parent;
+    stab_func* func;
 } scope;
 
 struct stab {
-    htab *funcs;
-    stab_func *main;
-    scope *current_scope; // top of scope stack
+    htab* funcs;
+    stab_func* main;
+    scope* current_scope; // top of scope stack
 };
 
 // key for function table
 // name is owned by function.name
 typedef struct {
-    const char *name;
+    const char* name;
     bool is_extension;
     DataType extends_type;
 } stab_func_key;
 
 // djb2 hash function used for variables and function names
-static htab_size_t djb2(const unsigned char *s) {
+static htab_size_t djb2(const unsigned char* s)
+{
     htab_size_t hash = 5381;
     int c;
     while ((c = *s++)) {
@@ -46,9 +47,10 @@ static htab_size_t djb2(const unsigned char *s) {
 
 // hash function for stab_func_key
 // extends type is only mixed in for methods
-static htab_size_t func_hash(htab_key_t key) {
-    const stab_func_key *k = key;
-    htab_size_t hash = djb2((const unsigned char *)k->name);
+static htab_size_t func_hash(htab_key_t key)
+{
+    const stab_func_key* k = key;
+    htab_size_t hash = djb2((const unsigned char*)k->name);
     if (k->is_extension) {
         hash = (hash << 5) + hash;
         hash += (htab_size_t)k->extends_type + 1;
@@ -57,14 +59,16 @@ static htab_size_t func_hash(htab_key_t key) {
 }
 
 // wrapper for string hash
-static htab_size_t str_hash(htab_key_t key) {
+static htab_size_t str_hash(htab_key_t key)
+{
     return djb2(key);
 }
 
 // checks if two stab_funcs_key are equal
-static bool eq_fn(htab_key_t a, htab_key_t b) {
-    const stab_func_key *x = a;
-    const stab_func_key *y = b;
+static bool eq_fn(htab_key_t a, htab_key_t b)
+{
+    const stab_func_key* x = a;
+    const stab_func_key* y = b;
     if (strcmp(x->name, y->name) != 0) {
         return false;
     }
@@ -79,38 +83,40 @@ static bool eq_fn(htab_key_t a, htab_key_t b) {
 
 // value free function for function table
 // frees all values
-static void value_free_fn(void *ptr) {
-    stab_func *f = ptr;
+static void value_free_fn(void* ptr)
+{
+    stab_func* f = ptr;
     if (!f) {
         return;
     }
 
     for (stab_size_t i = 0; i < f->list_count; i++) {
         for (stab_size_t j = 0; j < f->param_lists[i].count; j++) {
-            free((void *)f->param_lists[i].params[j].name);
+            free((void*)f->param_lists[i].params[j].name);
         }
         free(f->param_lists[i].params);
     }
     free(f->param_lists);
 
     for (stab_size_t i = 0; i < f->locals_count; i++) {
-        free((void *)f->locals[i]->name);
+        free((void*)f->locals[i]->name);
         free(f->locals[i]);
     }
     free(f->locals);
 
-    free((void *)f->extends.name);
-    free((void *)f->name);
+    free((void*)f->extends.name);
+    free((void*)f->name);
     free(f);
 }
 
 // strdup (c11 has problems with strdup, this replaces it)
-static char *str_copy(const char *s) {
+static char* str_copy(const char* s)
+{
     if (!s) {
         return NULL;
     }
     stab_size_t n = strlen(s) + 1;
-    char *t = malloc(n);
+    char* t = malloc(n);
     if (!t) {
         return NULL;
     }
@@ -119,15 +125,17 @@ static char *str_copy(const char *s) {
 }
 
 // checks if two strings are equal
-static bool str_eq(htab_key_t a, htab_key_t b) {
-    const char *s1 = a;
-    const char *s2 = b;
+static bool str_eq(htab_key_t a, htab_key_t b)
+{
+    const char* s1 = a;
+    const char* s2 = b;
     int res = strcmp(s1, s2);
     return res == 0;
 }
 
 // copies param list from src to dst, return true if sucessful, otherwise false
-static bool copy_param_list(stab_param_list *dst, const stab_param_list *src) {
+static bool copy_param_list(stab_param_list* dst, const stab_param_list* src)
+{
     if (src->count == 0) {
         return true;
     }
@@ -151,7 +159,8 @@ static bool copy_param_list(stab_param_list *dst, const stab_param_list *src) {
 }
 
 // copies every param list using copy_param_list, return true if sucessfull, otherwise false
-static bool copy_all_param_lists(stab_func *f, const stab_param_list *param_lists, stab_size_t list_count) {
+static bool copy_all_param_lists(stab_func* f, const stab_param_list* param_lists, stab_size_t list_count)
+{
     if (list_count == 0) {
         return true;
     }
@@ -171,16 +180,17 @@ static bool copy_all_param_lists(stab_func *f, const stab_param_list *param_list
     return true;
 }
 
-stab_func *stab_add_func(stab *st,
-                         const char *name,
-                         const stab_param_list *param_lists,
-                         stab_size_t list_count,
-                         DataType ret_type,
-                         bool ret_explicit,
-                         const stab_param *extends,
-                         stab_res_t *res) {
+stab_func* stab_add_func(stab* st,
+    const char* name,
+    const stab_param_list* param_lists,
+    stab_size_t list_count,
+    DataType ret_type,
+    bool ret_explicit,
+    const stab_param* extends,
+    stab_res_t* res)
+{
 
-    stab_func *f = calloc(1, sizeof *f);
+    stab_func* f = calloc(1, sizeof *f);
     if (!f) {
         *res = ST_NOMEM;
         return NULL;
@@ -214,7 +224,7 @@ stab_func *stab_add_func(stab *st,
         f->extends.type = extends->type;
     }
 
-    stab_func_key *key = malloc(sizeof *key);
+    stab_func_key* key = malloc(sizeof *key);
     if (!key) {
         value_free_fn(f);
         *res = ST_NOMEM;
@@ -241,103 +251,74 @@ stab_func *stab_add_func(stab *st,
 }
 
 static const stab_func BUILTINS[] = {
-    {.name = "print",
-     .builtin = BI_PRINT,
-     .ret_type = TYPE_UNIT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_ANY, 0}}, 1}},
-     .list_count = 1},
-    {.name = "readLine",
-     .builtin = BI_READLINE,
-     .ret_type = TYPE_STRING,
-     .param_lists = (stab_param_list[]){{NULL, 0}},
-     .list_count = 1},
-    {.name = "readInt",
-     .builtin = BI_READINT,
-     .ret_type = TYPE_INT,
-     .param_lists = (stab_param_list[]){{NULL, 0}},
-     .list_count = 1},
-    {.name = "readDouble",
-     .builtin = BI_READDOUBLE,
-     .ret_type = TYPE_DOUBLE,
-     .param_lists = (stab_param_list[]){{NULL, 0}},
-     .list_count = 1},
-    {.name = "readBoolean",
-     .builtin = BI_READBOOLEAN,
-     .ret_type = TYPE_BOOL, // BOOLTHEN
-     .param_lists = (stab_param_list[]){{NULL, 0}},
-     .list_count = 1},
-    {.name = "toStr",
-     .builtin = BI_TOSTR,
-     .ret_type = TYPE_STRING,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_ANY, 0}}, 1}},
-     .list_count = 1},
-    {.name = "toInt",
-     .builtin = BI_TOINT,
-     .ret_type = TYPE_INT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_DOUBLE, 0}}, 1}},
-     .list_count = 1},
-    {.name = "strLength",
-     .builtin = BI_STRLENGTH,
-     .ret_type = TYPE_INT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_STRING, 0}}, 1}},
-     .list_count = 1},
-    {.name = "subStr",
-     .builtin = BI_SUBSTR,
-     .ret_type = TYPE_STRING,
-     .param_lists =
-         (stab_param_list[]){
-             {(stab_param[]){{"value", TYPE_STRING, 0}, {"start", TYPE_INT, 0}, {"end", TYPE_INT, 0}}, 3}},
-     .list_count = 1},
-    {.name = "ord",
-     .builtin = BI_ORD,
-     .ret_type = TYPE_INT,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"value", TYPE_STRING, 0}, {"index", TYPE_INT, 0}}, 2}},
-     .list_count = 1},
-    {.name = "chr",
-     .builtin = BI_CHR,
-     .ret_type = TYPE_STRING,
-     .param_lists = (stab_param_list[]){{(stab_param[]){{"code", TYPE_INT, 0}}, 1}},
-     .list_count = 1},
-    {.name = "toString",
-     .builtin = BI_M_TOSTRING,
-     .ret_type = TYPE_STRING,
-     .is_extension = true,
-     .extends = {"value", TYPE_ANY, 0}},
-    {.name = "toInt",
-     .builtin = BI_M_TOINT,
-     .ret_type = TYPE_INT,
-     .is_extension = true,
-     .extends = {"value", TYPE_DOUBLE, 0}},
-    {.name = "floor",
-     .builtin = BI_M_FLOOR,
-     .ret_type = TYPE_DOUBLE,
-     .is_extension = true,
-     .extends = {"value", TYPE_DOUBLE, 0}},
-    {.name = "length",
-     .builtin = BI_M_LENGTH,
-     .ret_type = TYPE_INT,
-     .is_extension = true,
-     .extends = {"value", TYPE_STRING, 0}},
-    {.name = NULL}};
+    { .name = "print",
+        .builtin = BI_PRINT,
+        .ret_type = TYPE_UNIT,
+        .param_lists = (stab_param_list[]) { { (stab_param[]) { { "value", TYPE_ANY, 0 } }, 1 } },
+        .list_count = 1 },
+    { .name = "readLine",
+        .builtin = BI_READLINE,
+        .ret_type = TYPE_STRING,
+        .param_lists = (stab_param_list[]) { { NULL, 0 } },
+        .list_count = 1 },
+    { .name = "readInt",
+        .builtin = BI_READINT,
+        .ret_type = TYPE_INT,
+        .param_lists = (stab_param_list[]) { { NULL, 0 } },
+        .list_count = 1 },
+    { .name = "readDouble",
+        .builtin = BI_READDOUBLE,
+        .ret_type = TYPE_DOUBLE,
+        .param_lists = (stab_param_list[]) { { NULL, 0 } },
+        .list_count = 1 },
+    { .name = "readBoolean",
+        .builtin = BI_READBOOLEAN,
+        .ret_type = TYPE_BOOL, // BOOLTHEN
+        .param_lists = (stab_param_list[]) { { NULL, 0 } },
+        .list_count = 1 },
+    { .name = "toStr",
+        .builtin = BI_TOSTR,
+        .ret_type = TYPE_STRING,
+        .param_lists = (stab_param_list[]) { { (stab_param[]) { { "value", TYPE_ANY, 0 } }, 1 } },
+        .list_count = 1 },
+    { .name = "toInt",
+        .builtin = BI_TOINT,
+        .ret_type = TYPE_INT,
+        .param_lists = (stab_param_list[]) { { (stab_param[]) { { "value", TYPE_DOUBLE, 0 } }, 1 } },
+        .list_count = 1 },
+    { .name = "strLength",
+        .builtin = BI_STRLENGTH,
+        .ret_type = TYPE_INT,
+        .param_lists = (stab_param_list[]) { { (stab_param[]) { { "value", TYPE_STRING, 0 } }, 1 } },
+        .list_count = 1 },
+    { .name = "subStr",
+        .builtin = BI_SUBSTR,
+        .ret_type = TYPE_STRING,
+        .param_lists = (stab_param_list[]) {
+            { (stab_param[]) { { "value", TYPE_STRING, 0 }, { "start", TYPE_INT, 0 }, { "end", TYPE_INT, 0 } }, 3 } },
+        .list_count = 1 },
+    { .name = "ord", .builtin = BI_ORD, .ret_type = TYPE_INT, .param_lists = (stab_param_list[]) { { (stab_param[]) { { "value", TYPE_STRING, 0 }, { "index", TYPE_INT, 0 } }, 2 } }, .list_count = 1 }, { .name = "chr", .builtin = BI_CHR, .ret_type = TYPE_STRING, .param_lists = (stab_param_list[]) { { (stab_param[]) { { "code", TYPE_INT, 0 } }, 1 } }, .list_count = 1 }, { .name = "toString", .builtin = BI_M_TOSTRING, .ret_type = TYPE_STRING, .is_extension = true, .extends = { "value", TYPE_ANY, 0 } }, { .name = "toInt", .builtin = BI_M_TOINT, .ret_type = TYPE_INT, .is_extension = true, .extends = { "value", TYPE_DOUBLE, 0 } }, { .name = "floor", .builtin = BI_M_FLOOR, .ret_type = TYPE_DOUBLE, .is_extension = true, .extends = { "value", TYPE_DOUBLE, 0 } }, { .name = "length", .builtin = BI_M_LENGTH, .ret_type = TYPE_INT, .is_extension = true, .extends = { "value", TYPE_STRING, 0 } }, { .name = NULL }
+};
 
 // return false on ST_NOMEM error
-static bool register_builtin_fns(stab *st) {
+static bool register_builtin_fns(stab* st)
+{
     for (stab_size_t i = 0; BUILTINS[i].name != NULL; i++) {
 
-        const stab_param *pr_extends = NULL;
+        const stab_param* pr_extends = NULL;
         if (BUILTINS[i].is_extension) {
             pr_extends = &BUILTINS[i].extends;
         }
 
         stab_res_t res;
-        stab_func *f = stab_add_func(st,
-                                     BUILTINS[i].name,
-                                     BUILTINS[i].param_lists,
-                                     BUILTINS[i].list_count,
-                                     BUILTINS[i].ret_type,
-                                     true,
-                                     pr_extends,
-                                     &res);
+        stab_func* f = stab_add_func(st,
+            BUILTINS[i].name,
+            BUILTINS[i].param_lists,
+            BUILTINS[i].list_count,
+            BUILTINS[i].ret_type,
+            true,
+            pr_extends,
+            &res);
         if (f == NULL || res != ST_OK) {
             return false;
         }
@@ -350,8 +331,9 @@ static bool register_builtin_fns(stab *st) {
     return true;
 }
 
-stab *stab_new() {
-    stab *st = malloc(sizeof *st);
+stab* stab_new()
+{
+    stab* st = malloc(sizeof *st);
     if (st == NULL) {
         return NULL;
     }
@@ -374,7 +356,8 @@ stab *stab_new() {
     return st;
 }
 
-void stab_free(stab *st) {
+void stab_free(stab* st)
+{
     if (!st) {
         return;
     }
@@ -388,7 +371,8 @@ void stab_free(stab *st) {
     free(st);
 }
 
-stab_res_t stab_set_main(stab *st, stab_func *fn) {
+stab_res_t stab_set_main(stab* st, stab_func* fn)
+{
     assert(st != NULL);
     if (st->main != NULL) {
         return ST_REDEFINED;
@@ -399,15 +383,17 @@ stab_res_t stab_set_main(stab *st, stab_func *fn) {
     return ST_OK;
 }
 
-stab_func *stab_main(const stab *st) {
+stab_func* stab_main(const stab* st)
+{
     assert(st != NULL);
     return st->main;
 }
 
 // used for: while for etc. inherits the function from its parent
-stab_res_t stab_enter_scope(stab *st) {
+stab_res_t stab_enter_scope(stab* st)
+{
     assert(st != NULL && st->current_scope != NULL);
-    scope *s = malloc(sizeof *s);
+    scope* s = malloc(sizeof *s);
     if (!s) {
         return ST_NOMEM;
     }
@@ -423,9 +409,10 @@ stab_res_t stab_enter_scope(stab *st) {
     return ST_OK;
 }
 
-stab_res_t stab_enter_func(stab *st, stab_func *fn) {
+stab_res_t stab_enter_func(stab* st, stab_func* fn)
+{
     assert(st != NULL && fn != NULL);
-    scope *s = malloc(sizeof *s);
+    scope* s = malloc(sizeof *s);
     if (!s) {
         return ST_NOMEM;
     }
@@ -441,27 +428,30 @@ stab_res_t stab_enter_func(stab *st, stab_func *fn) {
     return ST_OK;
 }
 
-void stab_leave_scope(stab *st) {
+void stab_leave_scope(stab* st)
+{
     if (!st || !st->current_scope) {
         return;
     }
-    scope *s = st->current_scope;
+    scope* s = st->current_scope;
     st->current_scope = s->parent;
     htab_destroy(s->vars);
     free(s);
 }
 
-void stab_leave_func(stab *st) {
+void stab_leave_func(stab* st)
+{
     if (!st || !st->current_scope) {
         return;
     }
-    stab_func *fn = st->current_scope->func;
+    stab_func* fn = st->current_scope->func;
     while (st->current_scope && st->current_scope->func == fn) {
         stab_leave_scope(st);
     }
 }
 
-stab_func *stab_current_func(const stab *st) {
+stab_func* stab_current_func(const stab* st)
+{
     if (!st || !st->current_scope) {
         return NULL;
     }
@@ -470,8 +460,9 @@ stab_func *stab_current_func(const stab *st) {
 }
 
 // allocates variable and adds it to function.locals
-static stab_var *add_local(stab_func *f, const char *name, DataType type, bool is_mutable, bool is_param) {
-    stab_var *v = malloc(sizeof *v);
+static stab_var* add_local(stab_func* f, const char* name, DataType type, bool is_mutable, bool is_param)
+{
+    stab_var* v = malloc(sizeof *v);
     if (!v) {
         return NULL;
     }
@@ -487,9 +478,9 @@ static stab_var *add_local(stab_func *f, const char *name, DataType type, bool i
     v->is_param = is_param;
     v->id = f->locals_count;
 
-    stab_var **tmp = realloc(f->locals, (f->locals_count + 1) * sizeof *tmp);
+    stab_var** tmp = realloc(f->locals, (f->locals_count + 1) * sizeof *tmp);
     if (!tmp) {
-        free((void *)v->name);
+        free((void*)v->name);
         free(v);
         return NULL;
     }
@@ -499,17 +490,18 @@ static stab_var *add_local(stab_func *f, const char *name, DataType type, bool i
     return v;
 }
 
-stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mutable, stab_res_t *res, bool is_param) {
+stab_var* stab_declare_var(stab* st, const char* name, DataType type, bool is_mutable, stab_res_t* res, bool is_param)
+{
     assert(st != NULL && st->current_scope != NULL && st->current_scope->func != NULL);
 
-    stab_func *f = st->current_scope->func;
+    stab_func* f = st->current_scope->func;
 
     if (htab_get(st->current_scope->vars, name, NULL)) {
         *res = ST_REDEFINED;
         return NULL;
     }
 
-    stab_var *v = add_local(f, name, type, is_mutable, is_param);
+    stab_var* v = add_local(f, name, type, is_mutable, is_param);
     if (!v) {
         *res = ST_NOMEM;
         return NULL;
@@ -523,15 +515,16 @@ stab_var *stab_declare_var(stab *st, const char *name, DataType type, bool is_mu
     }
 
     f->locals_count--;
-    free((void *)v->name);
+    free((void*)v->name);
     free(v);
     *res = ST_NOMEM;
     return NULL;
 }
 
-stab_var *stab_find_var(const stab *st, const char *name) {
+stab_var* stab_find_var(const stab* st, const char* name)
+{
     assert(st != NULL);
-    for (const scope *s = st->current_scope; s != NULL && s->func == st->current_scope->func; s = s->parent) {
+    for (const scope* s = st->current_scope; s != NULL && s->func == st->current_scope->func; s = s->parent) {
         htab_value_t out;
         if (htab_get(s->vars, name, &out)) {
             return out;
@@ -540,7 +533,8 @@ stab_var *stab_find_var(const stab *st, const char *name) {
     return NULL;
 }
 
-stab_func *stab_find_func(const stab *st, const char *name, const DataType *extends) {
+stab_func* stab_find_func(const stab* st, const char* name, const DataType* extends)
+{
     assert(st != NULL && name != NULL);
 
     stab_func_key key = {
