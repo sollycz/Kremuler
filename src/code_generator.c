@@ -32,7 +32,7 @@ static void gen_builtin_funcs(void);
 
 static stab *st;
 static stab_func *current_func;
-static bool is_func_block;
+static bool keep_block_value;
 
 static unsigned if_counter;
 static unsigned for_counter;
@@ -166,7 +166,7 @@ static void gen_function(AstNode *node) {
         printf("DEFVAR LF@for$step$%u\n", for_counter + i);
     }
 
-    is_func_block = true;
+    keep_block_value = current_func->ret_type != TYPE_UNIT;
     gen_node(node->as.function.block);
 
     // add return in the final statement if only implicit
@@ -176,10 +176,9 @@ static void gen_function(AstNode *node) {
         // ret_type == UNIT funcs always return nil
         if (current_func->ret_type == TYPE_UNIT) {
             printf("PUSHS nil@nil\n");
-        } else if (last->node_kind == AST_EXPRESSION_STATEMENT &&
-                   last->as.expression_statement.expression->type == TYPE_INT &&
-                   current_func->ret_type == TYPE_DOUBLE) {
-            // int to float expansion of implicit return value
+        } else if ((last->node_kind == AST_EXPRESSION_STATEMENT || last->node_kind == AST_IF) &&
+                   last->type == TYPE_INT && current_func->ret_type == TYPE_DOUBLE) {
+            // implicit int to float expansion
             printf("INT2FLOATS\n");
         }
         printf("RETURN\n");
@@ -215,18 +214,17 @@ static unsigned count_fors(AstNode *block) {
 // generate all statements of a block sequentially
 // pops unused values of expression statements from data stack
 static void gen_block(AstNode *node) {
-    // is this the lowest scope in a func?
-    bool is_func_block_local = is_func_block;
-    is_func_block = false;
+    // is the value of the last statement used? (func body or if expression branch)
+    bool keep_block_value_local = keep_block_value;
+    keep_block_value = false;
 
     // gen all statements sequentially
     for (size_t i = 0; i < node->as.block.statements.count; i++) {
         gen_node(node->as.block.statements.items[i]);
 
-        // check if returned value from the line should be popped
-        // ALL ret_type == UNIT funcs and non-last expressions that return a value on stack, that won't be used
+        // pop values of expression statements that won't be used
         if (node->as.block.statements.items[i]->node_kind == AST_EXPRESSION_STATEMENT &&
-            (current_func->ret_type == TYPE_UNIT || !is_func_block_local || i != node->as.block.statements.count - 1)) {
+            (!keep_block_value_local || i != node->as.block.statements.count - 1)) {
             printf("POPS GF@tmp1\n");
         }
     }
@@ -410,8 +408,15 @@ static void gen_if(AstNode *node) {
     printf("PUSHS bool@false\n");
     printf("JUMPIFEQS else$%u\n", if_counter_local);
 
-    // then block
+    // then block, if expression keeps the value of its last statement
+    keep_block_value = node->as.if_statement.is_expression;
     gen_node(node->as.if_statement.then_block);
+
+    // implicit int to float expansion
+    AstNodeList *statements = &node->as.if_statement.then_block->as.block.statements;
+    if (statements->items[statements->count - 1]->type == TYPE_INT && node->type == TYPE_DOUBLE) {
+        printf("INT2FLOATS\n");
+    }
 
     // flow
     if (node->as.if_statement.else_block != NULL) {
@@ -421,7 +426,14 @@ static void gen_if(AstNode *node) {
 
     // else block
     if (node->as.if_statement.else_block != NULL) {
+        keep_block_value = node->as.if_statement.is_expression;
         gen_node(node->as.if_statement.else_block);
+
+        // implicit int to float expansion
+        statements = &node->as.if_statement.else_block->as.block.statements;
+        if (statements->items[statements->count - 1]->type == TYPE_INT && node->type == TYPE_DOUBLE) {
+            printf("INT2FLOATS\n");
+        }
         printf("LABEL if$%u\n", if_counter_local);
     }
 }
