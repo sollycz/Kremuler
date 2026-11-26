@@ -308,25 +308,25 @@ Vyhledávací struktura je implementována variantou 2 (hashovací tabulka je im
 # Rozšíření
 
 ## FUNEXP
-Rozšíření umožňuje volání funkcí uvnitř výrazů. Identifikátor následovaný otevírací závorkou se zpracuje jako název funkce uzlu AST_CALL. Argumenty pak zpracuje precedenční analýza a uloží do uzlu. Precedenční parser pak pokračuje, dokud nezpracuje celý výraz jako obvykle. 
+Rozšíření umožňuje volání funkcí uvnitř výrazů. Identifikátor následovaný otevírací závorkou se zpracuje jako název funkce uzlu `AST_CALL`. Argumenty pak zpracuje precedenční analýza a uloží do uzlu. Precedenční analyzátor pak pokračuje, dokud nezpracuje celý výraz jako obvykle. 
 
 ## VALMEM
-Rozšíření umožňuje využití tečkové notace. Lexikální analyzátor rozpoznává, zda je tečka za číselným literálem desetinná tečka nebo tečková notace. Precedenční analyzátor vytvoří uzel AST_CALL, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument a nastaví se příznak is_member.
+Rozšíření umožňuje využití tečkové notace. Lexikální analyzátor rozpoznává, zda je tečka za číselným literálem desetinná tečka nebo tečková notace. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument a nastaví se příznak `is_member`.
 
 ## INTERPOLATEDS
-Rozšíření se týkalo především lexikální analýzy a precedenční analýzy a umožňuje interpolované řetězce. Lexikální analyzátor čte řetězec tak, že běžný text vrací jako token řetězcového literálu, výrazy typu $id vrací jako token identifikátoru a ${výraz} vrací jako běžné tokeny. Pro vnořené interpolace se využívá zásobník struktur implementovaný jako jednosměrně vázaný seznam. Precedenční analyzátor zpracuje výrazy uvnitř ${výraz}, vloží hodnoty z $id a ${výraz} do volání toStr() a jednotlivé části propojí, aby vrátil jeden ucelený výraz.
+Rozšíření se týkalo především lexikální analýzy a precedenční analýzy a umožňuje interpolované řetězce. Lexikální analyzátor čte řetězec tak, že běžný text vrací jako token řetězcového literálu, výrazy typu `$id` vrací jako token identifikátoru a `${vyraz}` vrací jako běžné tokeny. Pro vnořené interpolace se využívá zásobník struktur implementovaný jako jednosměrně vázaný seznam. Precedenční analyzátor zpracuje výrazy uvnitř `${vyraz}`, vloží hodnoty z `$id` a `${vyraz}` do volání `toStr()` a jednotlivé části propojí, aby vrátil jeden ucelený výraz.
 
 ## PARAMLISTS
-Rozšíření umožňuje definice a volání funkcí bez seznamu parametrů nebo s více jak jedním seznamem parametrů. Precedenční analyzátor zpracovává seznamy argumentů a do uzlu AST_CALL ukládá počet seznamů a počet argumentů každého seznamu.
+Rozšíření umožňuje definice a volání funkcí bez seznamu parametrů nebo s více jak jedním seznamem parametrů. Precedenční analyzátor zpracovává seznamy argumentů a do uzlu `AST_CALL` ukládá počet seznamů a počet argumentů každého seznamu.
 
 ## EXTKW
-Rozšíření umožňuje vlastní definice funkcí využité v tečkové notaci. Precedenční analyzátor vytvoří uzel AST_CALL, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument, nastaví se příznak is_member a případně se zpracují také argumenty funkce.
+Rozšíření umožňuje vlastní definice funkcí využité v tečkové notaci. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument, nastaví se příznak `is_member` a případně se zpracují také argumenty funkce.
 
 ## CONTROL
-Rozšíření přidává cyklus for a možnost používat if jako výraz. Lexikální analýza rozpoznává nová klíčová slova a tokeny. Precedenční analyzátor, pokud očekává operand a dostane if, tak zavolá syntaktickou analýzu, která výraz (if...then...else) zpracuje a pošle zpět jako AST, se kterým precedenční analýza opět pracuje.
+Rozšíření přidává cyklus `for` a možnost používat `if` jako výraz. Lexikální analýza rozpoznává nová klíčová slova a tokeny. Precedenční analyzátor, pokud očekává operand a dostane if, tak zavolá syntaktickou analýzu, která výraz `if...then...else` zpracuje a pošle zpět jako `AST`, se kterým precedenční analýza opět pracuje.
 
 ## BOOLTHEN
-Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální analýza rozpoznává nové tokeny a klíčová slova true a false. Precedenční analyzátor pracuje s novými operátory podle pravidel asociativity a priorit operátorů.
+Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální analýza rozpoznává nové tokeny a klíčová slova `true` a `false`. Precedenční analyzátor pracuje s novými operátory podle pravidel asociativity a priorit operátorů.
 
 # Reference {.unnumbered}
 
