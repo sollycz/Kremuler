@@ -169,4 +169,4 @@ Vyhledávací struktura je implementována variantou 2 (hashovací tabulka je im
 
 # Reference {.unnumbered}
 
-1. YIGIT, Ozan S. *Hash Functions* [online]. [N.d.]. Algoritmus djb2. Dostupné z: <http://www.cse.yorku.ca/~oz/hash.html>.
+1. Hash Functions. Online. Cse.yorku.ca/~oz/hash.html. B.r. Dostupné z: <http://www.cse.yorku.ca/~oz/hash.html>. [cit. 2026-11-26].
