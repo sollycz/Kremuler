@@ -128,7 +128,47 @@ Při chybě scanner vypíše její popis na standardní chybový výstup a vrát
 \restoregeometry
 ```
 
-# Precedenční tabulka
+# Precedenční syntaktická analýza
+
+## Implementace
+
+Precedenční analyzátor získává tokeny prostřednictvím syntaktického analyzátoru (parser) a zpracovává výrazy podle precedenční tabulky a redukčních pravidel.
+
+- Využívá dynamicky alokovaný zásobník, na který ukládá terminály a výrazy.
+- Jako první zavolá parser precedenční analyzátor, o další tokeny už žádá prostřednictvím parseru precedenční analyzátor.
+- Symbol dna zásobníku označuje $, zároveň je symbol $ označení pro konec výrazu
+- Nejvrchnější terminál na zásobníku se porovná s aktuálním symbolem na vstupu a podle jejich vztahu v precedenční tabulce se provede operace redukce nebo operace vložení vstupního symbolu na zásobník.
+- Při redukcích se rovnou vytváří abstraktní syntaktický strom (AST).
+- Kořen se po úspěšném zpracování předá zpět parseru.
+- Pokud je místo operandu klíčové slovo if, tak precedenční analyzátor zavolá funkci parseru, která zpracuje celý výraz (if..then..else) a vrátí jeho AST, které se vloží jako výraz na zásobník.
+
+Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslušný chybový kód.
+
+## Pravidla redukce výrazů
+
+```{=latex}
+\begingroup
+\setlength{\parindent}{0pt}
+\begin{center}
+\fontsize{13}{16}\selectfont
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{r@{\hspace{3mm}}l@{\hspace{12mm}}|@{\hspace{12mm}}r@{\hspace{3mm}}l}
+1. & \(E \rightarrow E + E\)                          & 10. & \(E \rightarrow E > E\) \\
+2. & \(E \rightarrow E - E\)                          & 11. & \(E \rightarrow E\mathbin{\texttt{>=}}E\) \\
+3. & \(E \rightarrow E * E\)                          & 12. & \(E \rightarrow E\mathbin{\texttt{==}}E\) \\
+4. & \(E \rightarrow E / E\)                          & 13. & \(E \rightarrow E\mathbin{\texttt{!=}}E\) \\
+5. & \(E \rightarrow -E\)                             & 14. & \(E \rightarrow E\mathbin{\texttt{\&\&}}E\) \\
+6. & \(E \rightarrow +E\)                             & 15. & \(E \rightarrow E\mathbin{\texttt{||}}E\) \\
+7. & \(E \rightarrow \mathord{!}E\)                   & 16. & \(E \rightarrow (E)\) \\
+8. & \(E \rightarrow E < E\)                          & 17. & \(E \rightarrow i\) \\
+9. & \(E \rightarrow E\mathbin{\texttt{<=}}E\)        &     & \\
+\end{tabular}
+\end{center}
+\endgroup
+```
+\newpage
+
+## Precedenční tabulka
 
 ```{=latex}
 \newlength{\cellwidth}
@@ -182,28 +222,6 @@ Při chybě scanner vypíše její popis na standardní chybový výstup a vrát
 
 \newpage
 
-# Pravidla redukce výrazů
-
-```{=latex}
-\begingroup
-\setlength{\parindent}{0pt}
-\begin{center}
-\fontsize{13}{16}\selectfont
-\renewcommand{\arraystretch}{1.35}
-\begin{tabular}{r@{\hspace{3mm}}l@{\hspace{12mm}}|@{\hspace{12mm}}r@{\hspace{3mm}}l}
-1. & \(E \rightarrow E + E\)                          & 10. & \(E \rightarrow E > E\) \\
-2. & \(E \rightarrow E - E\)                          & 11. & \(E \rightarrow E\mathbin{\texttt{>=}}E\) \\
-3. & \(E \rightarrow E * E\)                          & 12. & \(E \rightarrow E\mathbin{\texttt{==}}E\) \\
-4. & \(E \rightarrow E / E\)                          & 13. & \(E \rightarrow E\mathbin{\texttt{!=}}E\) \\
-5. & \(E \rightarrow -E\)                             & 14. & \(E \rightarrow E\mathbin{\texttt{\&\&}}E\) \\
-6. & \(E \rightarrow +E\)                             & 15. & \(E \rightarrow E\mathbin{\texttt{||}}E\) \\
-7. & \(E \rightarrow \mathord{!}E\)                   & 16. & \(E \rightarrow (E)\) \\
-8. & \(E \rightarrow E < E\)                          & 17. & \(E \rightarrow i\) \\
-9. & \(E \rightarrow E\mathbin{\texttt{<=}}E\)        &     & \\
-\end{tabular}
-\end{center}
-\endgroup
-```
 
 
 # Sémantická analýza
