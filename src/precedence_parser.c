@@ -298,9 +298,9 @@ static ReductionType get_reduction_type(const PrecedenceStack *stack)
  * @brief creates a literal or identifier AST node from a token
  * @param[in] token to create a node from
  * @param[out] result receives a new node, or NULL on failure
- * @return 0 on success, otherwise error code
+ * @return PARSE_OK on success, otherwise error code
  */
-static int create_node_operand(const Token *token, AstNode **result) {
+static ParseResult create_node_operand(const Token *token, AstNode **result) {
     *result = NULL;
 
     AstKind kind = AST_LITERAL;
@@ -310,7 +310,7 @@ static int create_node_operand(const Token *token, AstNode **result) {
 
     AstNode *node = ast_new(kind, token->line);
     if (node == NULL) {
-        return 99;
+        return PARSE_INTERNAL_ERROR;
     }
 
     switch (token->type) {
@@ -340,7 +340,7 @@ static int create_node_operand(const Token *token, AstNode **result) {
             node->as.literal.value.string_val = copy_string(token->data.str_val);
             if (node->as.literal.value.string_val == NULL) {
                 free(node);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
             break;
 
@@ -349,37 +349,37 @@ static int create_node_operand(const Token *token, AstNode **result) {
             node->as.identifier.name = copy_string(token->data.str_val);
             if (node->as.identifier.name == NULL) {
                 free(node);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
             break;
 
         default:
             ast_free(node);
-            return 2;
+            return PARSE_SYNTAX_ERROR;
     }
 
     *result = node;
-    return 0;
+    return PARSE_OK;
 }
 
 /**
  * @brief applies one reduction rule from precedence table to the precedence stack
  * @param[in, out] stack to make a reduction from
- * @return 0 on success, otherwise error code
+ * @return PARSE_OK on success, otherwise error code
  */
-static int reduce_expression(PrecedenceStack *stack) {
+static ParseResult reduce_expression(PrecedenceStack *stack) {
     ReductionType reduction = get_reduction_type(stack);
                 
     if (reduction == REDUCTION_OPERAND) {
         size_t boundary_index;
         if (stack_take_top_boundary(stack, &boundary_index) != true) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
         
         StackItem *operand = &stack->items[boundary_index + 1];
 
-        int status = create_node_operand(&operand->token, &operand->ast);
-        if (status != 0) {
+        ParseResult status = create_node_operand(&operand->token, &operand->ast);
+        if (status != PARSE_OK) {
             return status;
         }
         
@@ -392,17 +392,17 @@ static int reduce_expression(PrecedenceStack *stack) {
         stack->items[boundary_index] = stack->items[boundary_index + 1];
 
         stack->length--;
-        return 0;
+        return PARSE_OK;
     }
     else if (reduction == REDUCTION_UNIT) {
         size_t boundary_index;
         if (stack_take_top_boundary(stack, &boundary_index) != true) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         AstNode *node = ast_new(AST_LITERAL, stack->items[boundary_index + 1].token.line);
         if (node == NULL) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         node->type = TYPE_UNIT;
@@ -410,29 +410,29 @@ static int reduce_expression(PrecedenceStack *stack) {
         stack->items[boundary_index].ast = node;
 
         stack->length -= 2;
-        return 0;
+        return PARSE_OK;
     } 
     else if (reduction == REDUCTION_PARENTHESES) {
         size_t boundary_index;
         if (stack_take_top_boundary(stack, &boundary_index) != true) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         stack->items[boundary_index] = stack->items[boundary_index + 2];
 
         stack->length -= 3;
-        return 0;
+        return PARSE_OK;
     }
     else if (reduction == REDUCTION_UNARY_OPERATION) { 
         size_t boundary_index;
         if (stack_take_top_boundary(stack, &boundary_index) != true) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         if (stack->items[boundary_index + 1].token.type == TOK_MINUS || stack->items[boundary_index + 1].token.type == TOK_PLUS) {
             AstNode *node = ast_new(AST_UNARY_OPERATOR, stack->items[boundary_index + 1].token.line);
             if (node == NULL) {
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
 
             node->type = TYPE_UNKNOWN;
@@ -450,7 +450,7 @@ static int reduce_expression(PrecedenceStack *stack) {
         if (stack->items[boundary_index + 1].token.type == TOK_NOT) {
             AstNode *node = ast_new(AST_UNARY_OPERATOR, stack->items[boundary_index + 1].token.line);
             if (node == NULL) {
-                return 99;
+                return PARSE_INTERNAL_ERROR;
                 }
 
                 node->type = TYPE_UNKNOWN;
@@ -461,20 +461,20 @@ static int reduce_expression(PrecedenceStack *stack) {
             } 
 
         stack->length -= 2;
-        return 0;
+        return PARSE_OK;
     }
     else if (reduction == REDUCTION_INVALID) {
-        return 2;
+        return PARSE_SYNTAX_ERROR;
     }
     else if (reduction == REDUCTION_BINARY_OPERATION) {
         size_t boundary_index;
         if (stack_take_top_boundary(stack, &boundary_index) != true) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         AstNode *node = ast_new(AST_BINARY_OPERATOR, stack->items[boundary_index + 2].token.line);
         if (node == NULL) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         node->type = TYPE_UNKNOWN;
@@ -517,7 +517,7 @@ static int reduce_expression(PrecedenceStack *stack) {
         
         else {
             free(node);
-            return 2;
+            return PARSE_SYNTAX_ERROR;
         }
 
         node->as.binary.left = stack->items[boundary_index + 1].ast;
@@ -526,12 +526,12 @@ static int reduce_expression(PrecedenceStack *stack) {
         stack->items[boundary_index].ast = node;
 
         stack->length -=3;
-        return 0;
+        return PARSE_OK;
     }
-    return 2;
+    return PARSE_SYNTAX_ERROR;
 }
 
-static int parse_argument_list(Parser *parser, AstNode *node, size_t list_index) {
+static ParseResult parse_argument_list(Parser *parser, AstNode *node, size_t list_index) {
     Token *token = &parser->current;
 
     ParseResult result = next_token(parser);
@@ -553,7 +553,7 @@ static int parse_argument_list(Parser *parser, AstNode *node, size_t list_index)
         bool bool_result = ast_list_push(&node->as.call.args, arg);
         if (bool_result != true) {
             ast_free(arg);
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
         node->as.call.arg_list_sizes[list_index]++;
 
@@ -562,7 +562,7 @@ static int parse_argument_list(Parser *parser, AstNode *node, size_t list_index)
         }
 
         if (token->type != TOK_COMMA) {
-            return 2;
+            return PARSE_SYNTAX_ERROR;
         }
         
         result = next_token(parser);
@@ -572,59 +572,59 @@ static int parse_argument_list(Parser *parser, AstNode *node, size_t list_index)
 
         if (token->type == TOK_RIGHT_PARENTHESIS) {
             if (token->lf_before == false) {
-                return 2;
+                return PARSE_SYNTAX_ERROR;
             }
             return next_token(parser);
         }
     }
 }
 
-static int parse_argument_lists(Parser *parser, AstNode *node) {
+static ParseResult parse_argument_lists(Parser *parser, AstNode *node) {
     Token *token = &parser->current;
 
     while (token->type == TOK_LEFT_PARENTHESIS) {
         size_t list_index = node->as.call.arg_list_count;
 
         if (list_index >= SIZE_MAX / sizeof(size_t)) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
         size_t *tmp = realloc(node->as.call.arg_list_sizes, (list_index + 1) * sizeof(size_t));
         if (tmp == NULL) {
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
         node->as.call.arg_list_sizes = tmp;
         
         node->as.call.arg_list_sizes[list_index] = 0;
         node->as.call.arg_list_count++;
 
-        int status = parse_argument_list(parser, node, list_index);
+        ParseResult status = parse_argument_list(parser, node, list_index);
         if (status != PARSE_OK) {
             return status;
         }
     }
 
-    return 0;
+    return PARSE_OK;
 }
 
 /**
  * @brief parse a function call and create AST
  * @param[in, out] parser provider for the input tokens
  * @param[out] result receives the call node, or NULL on failure
- * @return 0 on success, otherwise a parser error code
+ * @return PARSE_OK on success, otherwise a parser error code
  */
-int parse_function_call(Parser *parser, AstNode **result) {
+ParseResult parse_function_call(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
     AstNode *node = ast_new(AST_CALL, token->line);
     if (node == NULL) {
-        return 99;
+        return PARSE_INTERNAL_ERROR;
     }
 
     node->type = TYPE_UNKNOWN;
     node->as.call.name = copy_string(token->data.str_val);
     if (node->as.call.name == NULL) {
         ast_free(node);
-        return 99;
+        return PARSE_INTERNAL_ERROR;
     }
 
     node->as.call.arg_list_count = 0;
@@ -642,16 +642,16 @@ int parse_function_call(Parser *parser, AstNode **result) {
     }
 
     *result = node;
-    return 0;
+    return PARSE_OK;
 }
 
 /**
  * @brief parse an interpolated string and create AST
  * @param[in, out] parser provider for the input tokens
  * @param[out] result receives the string AST, or NULL on failure
- * @return 0 on success, otherwise parser error code
+ * @return PARSE_OK on success, otherwise parser error code
  */
-int parse_interpolated_string(Parser *parser, AstNode **result) {
+ParseResult parse_interpolated_string(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
 
@@ -663,14 +663,14 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
     // start with an empty string and append each interpolation part.
     AstNode *node = ast_new(AST_LITERAL, token->line);
     if (node == NULL) {
-        return 99;
+        return PARSE_INTERNAL_ERROR;
     }
 
     node->type = TYPE_STRING;
     node->as.literal.value.string_val = malloc(sizeof(char));
     if (node->as.literal.value.string_val == NULL) {
         ast_free(node);
-        return 99;
+        return PARSE_INTERNAL_ERROR;
     }
     // empty prefix handles s""
     node->as.literal.value.string_val[0] = '\0';
@@ -679,8 +679,8 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
         AstNode *part = NULL;
 
         if (token->type == TOK_STRING_LITERAL || token->type == TOK_ID) {
-            int status = create_node_operand(token, &part);
-            if (status != 0) {
+            ParseResult status = create_node_operand(token, &part);
+            if (status != PARSE_OK) {
                 ast_free(node);
                 return status;
             }
@@ -693,7 +693,7 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
             }
 
             status = parse_expression(parser, &part);
-            if (status != 0) {
+            if (status != PARSE_OK) {
                 ast_free(node);
                 ast_free(part);
                 return status;
@@ -702,13 +702,13 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
             if (token->type != TOK_INTERPOLATION_END) {
                 ast_free(node);
                 ast_free(part);
-                return 2;
+                return PARSE_SYNTAX_ERROR;
             }
         }
         else {
             ast_free(part);
             ast_free(node);
-            return 2;
+            return PARSE_SYNTAX_ERROR;
         }
 
         // wrap inserted ${} or $id in toStr() to get a plain text
@@ -717,7 +717,7 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
             if (conversion_to_string == NULL) {
                 ast_free(part);
                 ast_free(node);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
 
             conversion_to_string->type = TYPE_STRING;
@@ -726,7 +726,7 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
                 ast_free(conversion_to_string);
                 ast_free(node);
                 ast_free(part);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
             strcpy(conversion_to_string->as.call.name, "toStr");
 
@@ -735,7 +735,7 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
                 ast_free(conversion_to_string);
                 ast_free(node);
                 ast_free(part);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
             conversion_to_string->as.call.arg_list_count = 1;
             conversion_to_string->as.call.arg_list_sizes[0] = 1;
@@ -744,7 +744,7 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
                 ast_free(conversion_to_string);
                 ast_free(node);
                 ast_free(part);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
 
             part = conversion_to_string;
@@ -754,7 +754,7 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
         if (connect == NULL) {
             ast_free(node);
             ast_free(part);
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         connect->type = TYPE_STRING;
@@ -777,15 +777,15 @@ int parse_interpolated_string(Parser *parser, AstNode **result) {
     }
     
     *result = node;
-    return 0;
+    return PARSE_OK;
 }
 
-int parse_expression(Parser *parser, AstNode **result) {
+ParseResult parse_expression(Parser *parser, AstNode **result) {
     *result = NULL;
     Token *token = &parser->current;
     PrecedenceStack stack;
     if (stack_init(&stack) != true) {
-        return 99;
+        return PARSE_INTERNAL_ERROR;
     }
 
     StackItem end = {0};
@@ -793,7 +793,7 @@ int parse_expression(Parser *parser, AstNode **result) {
     end.symbol = SYMBOL_END;
     if (stack_push(&stack, end) != true) {
         stack_free(&stack);
-        return 99;
+        return PARSE_INTERNAL_ERROR;
     }
 
     bool needs_operand = true;
@@ -818,7 +818,7 @@ int parse_expression(Parser *parser, AstNode **result) {
             if (push_result != true) {
                 stack_and_ast_free(&stack);
                 ast_free(node);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
 
             needs_operand = false;
@@ -828,8 +828,8 @@ int parse_expression(Parser *parser, AstNode **result) {
         // parse the interpolated string as one whole expression.
         if (token->type == TOK_INTERPOLATED_BEGIN && needs_operand == true) {
             AstNode *string = NULL;
-            int result = parse_interpolated_string(parser, &string);
-            if (result != 0) {
+            ParseResult result = parse_interpolated_string(parser, &string);
+            if (result != PARSE_OK) {
                 stack_and_ast_free(&stack);
                 return result;
             }
@@ -840,7 +840,7 @@ int parse_expression(Parser *parser, AstNode **result) {
             if (stack_push(&stack, item) != true) {
                 stack_and_ast_free(&stack);
                 ast_free(string);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
 
             needs_operand = false;
@@ -856,8 +856,8 @@ int parse_expression(Parser *parser, AstNode **result) {
             }
             if (lookahead == TOK_LEFT_PARENTHESIS) {
                 AstNode *call = NULL;
-                int result = parse_function_call(parser, &call);
-                if (result != 0) {
+                ParseResult result = parse_function_call(parser, &call);
+                if (result != PARSE_OK) {
                     stack_and_ast_free(&stack);
                     return result;
                 }
@@ -869,7 +869,7 @@ int parse_expression(Parser *parser, AstNode **result) {
                 if (stack_push(&stack, item) != true) {
                     stack_and_ast_free(&stack);
                     ast_free(call);
-                    return 99;
+                    return PARSE_INTERNAL_ERROR;
                 }
 
                 needs_operand = false;
@@ -880,13 +880,13 @@ int parse_expression(Parser *parser, AstNode **result) {
         if (token->type == TOK_DOT) {
             if (needs_operand == true) {
                 stack_and_ast_free(&stack);
-                return 2;
+                return PARSE_SYNTAX_ERROR;
             }
 
             if (stack.items[stack.length - 1].type != STACK_EXPRESSION) {
-                int reduction_result = reduce_expression(&stack);
+                ParseResult reduction_result = reduce_expression(&stack);
 
-                if (reduction_result != 0) {
+                if (reduction_result != PARSE_OK) {
                     stack_and_ast_free(&stack);
                     return reduction_result;
                 }
@@ -900,13 +900,13 @@ int parse_expression(Parser *parser, AstNode **result) {
 
             if (token->type != TOK_ID) {
                 stack_and_ast_free(&stack);
-                return 2;
+                return PARSE_SYNTAX_ERROR;
             }
 
             AstNode *node = ast_new(AST_CALL, token->line);
             if (node == NULL) {
                 stack_and_ast_free(&stack);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
             
             node->type = TYPE_UNKNOWN;
@@ -914,7 +914,7 @@ int parse_expression(Parser *parser, AstNode **result) {
             if (node->as.call.name == NULL) {
                 ast_free(node);
                 stack_and_ast_free(&stack);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
 
             node->as.call.is_member = true;
@@ -923,7 +923,7 @@ int parse_expression(Parser *parser, AstNode **result) {
             if (ast_list_push(&node->as.call.args, stack.items[stack.length - 1].ast) != true) {
                 ast_free(node);
                 stack_and_ast_free(&stack);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
             }
             stack.items[stack.length - 1].ast = node;
 
@@ -962,13 +962,13 @@ int parse_expression(Parser *parser, AstNode **result) {
         }
         else if (token_to_symbol(token->type, needs_operand, &input_symbol) != true) {
             stack_and_ast_free(&stack);
-            return 2;
+            return PARSE_SYNTAX_ERROR;
         }
 
         size_t terminal_index;
         if (stack_take_top_terminal(&stack, &terminal_index) != true) {
             stack_and_ast_free(&stack);
-            return 99;
+            return PARSE_INTERNAL_ERROR;
         }
 
         if (input_symbol == SYMBOL_END && stack.length == 2 &&
@@ -976,7 +976,7 @@ int parse_expression(Parser *parser, AstNode **result) {
             stack.items[1].type == STACK_EXPRESSION) {
                 *result = stack.items[1].ast;
                 stack_free(&stack);
-                return 0;
+                return PARSE_OK;
         }
 
         PrecedenceAction action = get_action(stack.items[terminal_index].symbol, input_symbol);
@@ -992,12 +992,12 @@ int parse_expression(Parser *parser, AstNode **result) {
                 boundary.type = STACK_BOUNDARY;
                 if (stack_insert(&stack, terminal_index + 1, boundary) != true) {
                     stack_and_ast_free(&stack);
-                    return 99;
+                    return PARSE_INTERNAL_ERROR;
                 }
 
                 if (stack_push(&stack, item) != true) {
                     stack_and_ast_free(&stack);
-                    return 99;
+                    return PARSE_INTERNAL_ERROR;
                 }
                 
                 if (token->type == TOK_STRING_LITERAL || token->type == TOK_ID) {
@@ -1036,7 +1036,7 @@ int parse_expression(Parser *parser, AstNode **result) {
 
                 if (stack_push(&stack, item) != true) {
                     stack_and_ast_free(&stack);
-                    return 99;
+                    return PARSE_INTERNAL_ERROR;
                 }
 
                 if (token->type == TOK_STRING_LITERAL || token->type == TOK_ID) {
@@ -1068,8 +1068,8 @@ int parse_expression(Parser *parser, AstNode **result) {
                 break;
             }
             case ACTION_REDUCE: {
-                int result = reduce_expression(&stack);
-                if (result != 0) {
+                ParseResult result = reduce_expression(&stack);
+                if (result != PARSE_OK) {
                     stack_and_ast_free(&stack);
                     return result;
                 } 
@@ -1078,11 +1078,11 @@ int parse_expression(Parser *parser, AstNode **result) {
 
             case ACTION_ERROR:
                 stack_and_ast_free(&stack);
-                return 2;
+                return PARSE_SYNTAX_ERROR;
 
             default:
                 stack_and_ast_free(&stack);
-                return 99;
+                return PARSE_INTERNAL_ERROR;
         }
     }
 }
