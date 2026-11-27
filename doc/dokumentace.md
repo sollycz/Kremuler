@@ -345,3 +345,6 @@ Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální anal�
 
 1. Hash Functions. Online. Cse.yorku.ca/~oz/hash.html. B.r. Dostupné z: <http://www.cse.yorku.ca/~oz/hash.html>. [cit. 2026-11-26].
 2. C reference. Online. Cppreference.com. Dostupné z: <https://www.cppreference.com/c>. [cit. 2026-11-26].
+3. MEDUNA, Alexander a Roman LUKÁŠ. Formální jazyky a překladače. Přednáškové prezentace. [cit. 2026-11-27].
+4. ONDRYÁŠ, Ondřej. IFJ 2026/27: Projekt – překladač jazyka IFJ26. Přednášková prezentace. [cit. 2026-11-27].
+5. BURGETOVÁ, Ivana a Radek HRANICKÝ. Algoritmy – IAL 2026/27. Přednáškové prezentace. [cit. 2026-11-27].
