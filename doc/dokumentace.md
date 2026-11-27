@@ -553,3 +553,4 @@ Generátor kódu před voláním funkce prochází všechny seznamu parametrů a
 3. MEDUNA, Alexander a Roman LUKÁŠ. Formální jazyky a překladače. Přednáškové prezentace. [cit. 2026-11-27].
 4. ONDRYÁŠ, Ondřej. IFJ 2026/27: Projekt – překladač jazyka IFJ26. Přednášková prezentace. [cit. 2026-11-27].
 5. BURGETOVÁ, Ivana a Radek HRANICKÝ. Algoritmy – IAL 2026/27. Přednáškové prezentace. [cit. 2026-11-27].
+6. PREMATURE ABSTRACTION. Compilers. Online, playlist. YouTube. Dostupné z: <https://youtube.com/playlist?list=PL6whQ6CW68oe3tcmFcBLYFQChqwYEaG7_>. [cit. 2026-11-27].
