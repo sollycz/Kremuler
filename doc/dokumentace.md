@@ -322,13 +322,18 @@ Volající postupně vyhodnotí všechny argumenty na datový zásobník, vytvo�
 Rozšíření umožňuje volání funkcí uvnitř výrazů. Identifikátor následovaný otevírací závorkou se zpracuje jako název funkce uzlu `AST_CALL`. Argumenty pak zpracuje precedenční analýza a uloží do uzlu. Precedenční analyzátor pak pokračuje, dokud nezpracuje celý výraz jako obvykle.
 
 ### BOOLTHEN
-Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální analýza rozpoznává nové tokeny a klíčová slova `true` a `false`. Precedenční analyzátor pracuje s novými operátory podle pravidel asociativity a priorit operátorů.
+Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální analýza rozpoznává nové tokeny a klíčová slova `true` a `false`. Precedenční analyzátor pracuje s novými operátory podle pravidel asociativity a priorit operátorů. Syntaktický analyzátor přidává typ Boolean a upravuje LL gramatiku tak, aby umožňovala práci s booleovskými hodnotami.
 
 ### CONTROL
 Rozšíření přidává cyklus `for` a možnost používat `if` jako výraz. Lexikální analýza rozpoznává nová klíčová slova a tokeny. Pokud precedenční analyzátor očekává operand a dostane `if`, zavolá syntaktickou analýzu, která výraz `if ... then ... else` zpracuje a vrátí jako AST, se kterým precedenční analýza dále pracuje.
 
+Parser při zpracování ifu jako výrazu kontroluje, že každý if v řetězci else if má větev else, jinak jde o syntaktickou chybu. Takto zpracovaný if i ify na konci větví následně označí příznakem `is_expression`. Pro případy, kde parser nestačí, se o dané označení postará až sémantická analýza. Variantu větví s jednořádkovým tělem parser zabalí do uzlu `AST_BLOCK`, takže sémantická analýza i generátor kódu vždy pracují už pouze s blokem.
+
+Cyklus `for` dokáže parser zpracovat v jednořádkovém i víceřádkovém tvaru. Slova `to`, `until` a `by` nejsou klíčová slova, parser je rozpoznává pouze jako identifikátory s daným jménem.
+Do uzlu `AST_FOR` ukládá jméno řídicí proměnné, meze `from` a `to`, příznak `inclusive` (to = true, until = false), krok step, případně seznam podmínek stráží, a samotné tělo cyklu.
+
 ### VALMEM
-Rozšíření umožňuje využití tečkové notace. Lexikální analyzátor rozpoznává, zda je tečka za číselným literálem desetinná tečka nebo tečková notace. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument a nastaví se příznak `is_member`.
+Rozšíření umožňuje využití tečkové notace. Lexikální analyzátor rozpoznává, zda je tečka za číselným literálem desetinná tečka, nebo tečková notace. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument a nastaví se příznak `is_member`.
 
 ### INTERPOLATEDS
 Rozšíření se týká především lexikální analýzy a precedenční analýzy a umožňuje interpolované řetězce. Lexikální analyzátor čte řetězec tak, že běžný text vrací jako token řetězcového literálu, výrazy typu `$id` vrací jako token identifikátoru a `${výraz}` vrací jako běžné tokeny. Pro vnořené interpolace se využívá zásobník struktur implementovaný jako jednosměrně vázaný seznam. Precedenční analyzátor zpracuje výrazy uvnitř `${výraz}`, vloží hodnoty z `$id` a `${výraz}` do volání `toStr()` a jednotlivé části propojí, aby vrátil jeden ucelený výraz.
@@ -336,8 +341,12 @@ Rozšíření se týká především lexikální analýzy a precedenční analý
 ### EXTKW
 Rozšíření umožňuje definovat vlastní funkce, které lze volat tečkovou notací. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument, nastaví se příznak `is_member` a případně se zpracují také argumenty funkce.
 
+Definice rozšíření zpracovává parser. Za klíčovým slovem extension následuje v závorkách právě jeden explicitně otypovaný parametr (příjemce). Za ním je buď na stejném řádku ještě funkce, nebo odsazený blok s jednou či více metodami. Každá metoda se zpracuje jako běžná funkce a do položky `receiver` dostane vlastní kopii parametru příjemce. Ten se neukládá do seznamu `parameters`, normální funkce mají `receiver = NULL`. Metody se přidávají přímo do seznamu funkcí programu, takže sémantická analýza ani generátor kódu nepotřebují nový typ uzlu.
+
 ### PARAMLISTS
 Rozšíření umožňuje definice a volání funkcí bez seznamu parametrů nebo s více než jedním seznamem parametrů. Precedenční analyzátor zpracovává seznamy argumentů a do uzlu `AST_CALL` ukládá počet seznamů a počet argumentů každého seznamu.
+
+Definice funkcí zpracovává parser, jenž cyklicky čte seznamy v závorkách, dokud přichází token "(" (`TOK_LEFT_PARENTHESIS`), a vkládá parametry do uzlu `AST_FUNCTION`. Ty se ukládají do jednoho plochého seznamu `parameters` a jejich počet v každém seznamu se zapisuje do pole `list_sizes`. Celkový počet seznamů je uveden v `list_count`, kde hodnota 0 znamená funkci bez závorek (stylu `def funkce1`) a např. 1 funkci s jedním seznamem parametrů.
 
 \newpage
 
