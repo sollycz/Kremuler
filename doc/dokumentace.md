@@ -105,7 +105,7 @@ Na začátku jsme se v týmu dohodli na kultuře používání AI. LLM byly vyu�
 \hline
 \textbf{Modul} & \textbf{Popis} \\ \hline\hline
 \texttt{main.c} & Vstupní bod překladače, postupně volá jednotlivé části a při chybě vrátí návratový kód. \\ \hline
-\texttt{token.h} & \\ \hline
+\texttt{token.h} & Struktura tokenu obsahující jeho typ, data, pozici ve zdrojovém kódu a odsazení řádku. \\ \hline
 \texttt{types.h} & \\ \hline
 \texttt{scanner.c/.h} & Lexikální analyzátor. Zpracovává zdrojový kód pomocí deterministického konečného automatu a předává syntaktickému analyzátoru tokeny. \\ \hline
 \texttt{scanner\_buffer.c/.h} & Dynamicky alokovaná vyrovnávací paměť lexikálního analyzátoru. Při zaplnění zdvojnásobí svoji kapacitu. \\ \hline
