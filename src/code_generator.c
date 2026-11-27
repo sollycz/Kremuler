@@ -30,8 +30,8 @@ static bool is_num(AstNode* node);
 static void gen_call(AstNode* node);
 static void gen_builtin_funcs(void);
 
-static stab* st;
-static stab_func* current_func;
+static Stab* st;
+static StabFunc* current_func;
 static bool keep_block_value;
 
 static unsigned if_counter;
@@ -41,7 +41,7 @@ static unsigned skip_counter;
 
 // entry point of the code generator
 // prints IFJcode26 for the whole program to stdout
-void generate_code(AstNode* ast, stab* stab)
+void generate_code(AstNode* ast, Stab* stab)
 {
     assert(ast != NULL && ast->node_kind == AST_PROGRAM);
     assert(stab != NULL && stab_main(stab));
@@ -119,7 +119,7 @@ static void gen_program(AstNode* node)
     printf("DEFVAR GF@tmp3\n");
     printf("DEFVAR GF@tmp4\n");
 
-    stab_func* main = stab_main(st);
+    StabFunc* main = stab_main(st);
 
     printf("CREATEFRAME\n");
     printf("PUSHFRAME\n");
@@ -494,7 +494,7 @@ static void gen_assign(AstNode* node)
 
     // get var type to which is assigning
     assert(node->var_id < current_func->locals_count);
-    const stab_var* var = current_func->locals[node->var_id];
+    const StabVar* var = current_func->locals[node->var_id];
 
     // int to float expansion
     if (node->as.assign.value->type == TYPE_INT && var->type == TYPE_DOUBLE) {
@@ -797,13 +797,13 @@ static bool is_num(AstNode* node)
 static void gen_call(AstNode* node)
 {
     // get the called func
-    stab_func* callee = stab_find_func(st, node->as.call.name, node->as.call.is_member ? &node->as.call.args.items[0]->type : NULL);
+    StabFunc* callee = stab_find_func(st, node->as.call.name, node->as.call.is_member ? &node->as.call.args.items[0]->type : NULL);
     assert(callee != NULL);
 
     // get current param list
-    stab_size_t param_idx = 0;
-    stab_size_t param_list_idx = 0;
-    stab_param_list* param_list = &callee->param_lists[0];
+    StabSize param_idx = 0;
+    StabSize param_list_idx = 0;
+    StabParamList* param_list = &callee->param_lists[0];
 
     // EXTKW: eval extended arg
     if (node->as.call.is_member) {
@@ -846,7 +846,7 @@ static void gen_call(AstNode* node)
             param_list = &callee->param_lists[param_list_idx];
             param_idx = param_list->count;
         }
-        const stab_param* param = &param_list->params[--param_idx];
+        const StabParam* param = &param_list->params[--param_idx];
 
         // def param and assign value
         if (callee->is_builtin) {

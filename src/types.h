@@ -7,7 +7,7 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-typedef enum datatype {
+typedef enum DataType {
     TYPE_UNKNOWN, // for datatypes that will be assigned later by the semantic analyser
     TYPE_INT,
     TYPE_DOUBLE,

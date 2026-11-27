@@ -18,9 +18,9 @@ int main(void)
         return result; // 1 / 2 / 99, ast stays NULL
     }
 
-    stab* st = stab_new();
+    Stab* st = stab_new();
     semantic_init(st);
-    sem_res_t r = semantic_analyse(ast);
+    SemRes r = semantic_analyse(ast);
     if (r != SEM_OK) {
         return r;
     }

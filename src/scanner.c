@@ -81,10 +81,10 @@ typedef enum {
     INTERPOLATED_MODE_ENDED
 } InterpolatedMode;
 
-typedef struct interpolation_state {
+typedef struct InterpolationState {
     InterpolatedMode mode;
     bool reading_expression;
-    struct interpolation_state* previous;
+    struct InterpolationState* previous;
 } InterpolationState;
 
 typedef enum {

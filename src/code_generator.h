@@ -12,6 +12,6 @@
 
 // outputs raw IFJcode26 instructions to stdout
 // based on the inputted AST and symtable
-void generate_code(AstNode* ast, stab* st);
+void generate_code(AstNode* ast, Stab* st);
 
 #endif
