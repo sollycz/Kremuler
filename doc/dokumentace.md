@@ -93,7 +93,7 @@ Na začátku jsme se v týmu dohodli na kultuře používání AI. LLM byly vyu�
 
 \newpage
 
-# Implementace
+# Implementace překladače
 
 ## Popis modulů
 
@@ -279,8 +279,6 @@ Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslu�
 
 \newpage
 
-
-
 ## Sémantická analýza
 Sémantická analýza dostává od syntaktické analýzy abstraktní syntaktický strom a tabulku symbolů z main.c, ve které jsou předem zaregistrovány pouze vestavěné funkce. Během analýzy doplňuje do stromu typy uzlů a identifikátory proměnných, které následně využívá generátor kódu. Při chybě vypisuje hlášení na standartní chybový výstup a analýzu ukončuje.
 
@@ -340,6 +338,8 @@ Rozšíření přidává cyklus `for` a možnost používat `if` jako výraz. Le
 
 ### BOOLTHEN
 Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální analýza rozpoznává nové tokeny a klíčová slova `true` a `false`. Precedenční analyzátor pracuje s novými operátory podle pravidel asociativity a priorit operátorů.
+
+\newpage
 
 # Reference {.unnumbered}
 
