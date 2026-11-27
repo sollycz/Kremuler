@@ -347,7 +347,7 @@ Když precedence čeká operand a dostane `if`, zavolá zpátky parserovu `parse
 {\footnotesize\itshape Pozn.: sloupec \texttt{\textless{}expression\textgreater{}} není technicky vzato terminál, takže v LL tabulce je jím myšlen „token, kterým může začínat výraz“.\par}
 ```
 
-LL tabulka obsahuje několik LL(1) konfliktů - každý z nich parser řeší konkrétně způsobem popsaným níže:
+LL tabulka obsahuje několik LL(1) konfliktů - parser je řeší způsoby popsanými níže:
 
 1. `<statement_simple>` při `TOK_ID` může následovat přiřazení nebo výraz. Rozhoduje se podle dalšího tokenu `TOK_ASSIGN`, tedy LL(2).
 2. Také LL(2) pro `TOK_SEMICOLON` - parser zkontroluje, zda za středníkem nenásleduje `TOK_EOL` - pokud ano, tak ho zkonzumuje.
@@ -356,8 +356,6 @@ LL tabulka obsahuje několik LL(1) konfliktů - každý z nich parser řeší ko
 5. Dangling else v `<else>` patří vždy k nejbližšímu if.
 
 ### Precedenční syntaktická analýza
-
-#### Implementace
 
 Precedenční analyzátor získává tokeny prostřednictvím syntaktického analyzátoru (parseru) a zpracovává výrazy podle precedenční tabulky a redukčních pravidel.
 
@@ -371,7 +369,7 @@ Precedenční analyzátor získává tokeny prostřednictvím syntaktického ana
 
 Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslušný chybový kód.
 
-#### Pravidla redukce výrazů
+### Pravidla redukce výrazů
 
 ```{=latex}
 \begingroup
@@ -393,9 +391,10 @@ Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslu�
 \end{center}
 \endgroup
 ```
+
 \newpage
 
-#### Precedenční tabulka
+### Precedenční tabulka
 
 ```{=latex}
 \newlength{\cellwidth}
@@ -450,9 +449,11 @@ Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslu�
 \newpage
 
 ## Sémantická analýza
+
 Sémantická analýza dostává od syntaktické analýzy abstraktní syntaktický strom a tabulku symbolů z `main.c`, ve které jsou předem zaregistrovány pouze vestavěné funkce. Během analýzy doplňuje do stromu typy uzlů a identifikátory proměnných, které následně využívá generátor kódu. Při chybě vypisuje hlášení na standardní chybový výstup a analýzu ukončuje.
 
 ### Průchod programem
+
 Samotná analýza probíhá ve dvou průchodech, aby bylo možné volat funkce definované později.
 
  - **1. průchod:** Pro každou definici funkce se vkládají seznamy parametrů (rozšíření PARAMLISTS), návratové typy a případný příjemce (rozšíření EXTKW) do tabulky symbolů. Neuvedené návratové typy jsou poznamenány a musí se odvodit v druhém průchodu. Tabulka symbolů v této fázi dokáže odhalit redefinici funkce, a to včetně `@main`. Zároveň se kontroluje signatura funkce `@main`. Po prvním průchodu se kontroluje existence funkce `@main`.
