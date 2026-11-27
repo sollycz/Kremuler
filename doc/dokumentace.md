@@ -62,11 +62,11 @@ Tomáš Neckař     & (xneckat00) & 281998 & 25 \% \\
 
 # Práce v týmu
 
-Časový plán jsme si vytvořili hned po sestavení týmu na první schůzce. Obsahoval rozdělení etap vývoje, termínů pro jednotlivé ucelené celky překladače a časovou rezervu.
-Plán jsme museli několikrát upravit, díky časové rezervě jsme vše stihli.
+Časový plán jsme si vytvořili hned po sestavení týmu na první schůzce. Obsahoval rozdělení etap vývoje, termíny pro jednotlivé ucelené celky překladače a časovou rezervu.
+Plán jsme museli několikrát upravit, ale díky časové rezervě jsme vše stihli.
 
 
-Na první schůzce bylo vymyšleno rozhraní AST, pro propojení jednotlivých částí. V týmu jsme vytvořili dvojice, které si navzájem kontrolovaly kód.
+Na první schůzce jsme navrhli rozhraní AST pro propojení jednotlivých částí. V týmu jsme vytvořili dvojice, které si navzájem kontrolovaly kód.
 
 ## Rozdělení práce
  - Oleksandr Teslja
@@ -84,9 +84,9 @@ Na první schůzce bylo vymyšleno rozhraní AST, pro propojení jednotlivých �
 Na dokumentaci a testování jednotlivých částí v rámci kontroly kódu se podílel celý tým.
 
 ## Využití AI
-Na začátku jsme se v týmu dohodli na kultuře používání AI. LLM byly využívány na:
+Na začátku jsme se v týmu dohodli na pravidlech používání AI. LLM byly využívány k:
 
- - vysvětlení nejasných částí specifikace popřípadě funkčnosti jazyka Scala
+ - vysvětlení nejasných částí specifikace, popřípadě fungování jazyka Scala
  - generování testovacích skriptů na konkrétní testovací případy
  - zapojení do procesu kontroly kódu
  - vytvoření jednoduchého Makefile
@@ -114,9 +114,9 @@ Na začátku jsme se v týmu dohodli na kultuře používání AI. LLM byly vyu�
 \texttt{precedence\_stack.c/.h} & Dynamicky alokovaný zásobník precedenčního analyzátoru. Při zaplnění zdvojnásobí svoji kapacitu. \\ \hline
 \texttt{ast.c/.h} & \\ \hline
 \texttt{hashtable.c/.h} & ADT obecné hashovací tabulky s otevřeným adresováním. Dle potřeby zvětšuje či přehashuje tabulku. \\ \hline
-\texttt{symtable.c/.h} & ADT tabulky symbolů využívající hashovací tabulku a hashovací funkci djb2. Uchovává informace o funkcích a proměnných, stará se o rozsahy platnosti a přetížení funkcí či proměnných. \\ \hline
+\texttt{symtable.c/.h} & ADT tabulky symbolů využívající hashovací tabulku a hashovací funkci djb2. Uchovává informace o funkcích a proměnných, stará se o rozsahy platnosti, zastínění proměnných a přetížení funkcí. \\ \hline
 \texttt{semantic.c/.h} & Dvouprůchodový sémantický analyzátor. V prvním průchodu registruje všechny funkce, ve druhém kontroluje jejich těla. \\ \hline
-\texttt{code\_generator.c/.h} & Generátor cílového kódu, který post-order průchodem AST vypisuje na stdout program v IFJcode26 včetně vestavěných funkcí. \\ \hline
+\texttt{code\_generator.c/.h} & Generátor cílového kódu, který rekurzivním průchodem AST vypisuje na stdout program v IFJcode26 včetně vestavěných funkcí. \\ \hline
 \end{tabularx}
 \caption{Popis modulů}
 \end{table}
@@ -146,9 +146,9 @@ Na začátku jsme se v týmu dohodli na kultuře používání AI. LLM byly vyu�
 
 ### Implementace
 
-Lexikální analyzátor (Scanner) čte zdrojový kód ze standardního vstupu, rozpoznává jednotlivé lexémy a předává je syntaktickému analyzátoru ve formě tokenů. Základem implementace je deterministický konečný automat.
+Lexikální analyzátor (scanner) čte zdrojový kód ze standardního vstupu, rozpoznává jednotlivé lexémy a předává je syntaktickému analyzátoru ve formě tokenů. Základem implementace je deterministický konečný automat.
 
-- Scanner čte ze standardního vstupu v případě, kdy parser požádá o další token.
+- Scanner čte ze standardního vstupu pouze tehdy, když parser požádá o další token.
 - Dynamicky alokovaná vyrovnávací paměť se používá k ukládání znaků identifikátorů, číselných a řetězcových literálů.
 - Rozlišuje identifikátory od klíčových slov.
 - Počítá úvodní mezery určující odsazení řádku. Zjištěné odsazení předává parseru jako součást tokenu. Také se v tokenech nachází informace o pozici ve zdrojovém kódu pro přesnější lokalizaci chyb.
@@ -192,12 +192,12 @@ Při chybě scanner vypíše její popis na standardní chybový výstup a vrát
 Precedenční analyzátor získává tokeny prostřednictvím syntaktického analyzátoru (parseru) a zpracovává výrazy podle precedenční tabulky a redukčních pravidel.
 
 - Využívá dynamicky alokovaný zásobník, na který ukládá terminály a výrazy.
-- Parser nejprve zavolá precedenční analyzátor, o další tokeny už žádá prostřednictvím parseru precedenční analyzátor.
-- Symbol dna zásobníku označuje $, zároveň je symbol $ označení pro konec výrazu.
+- Parser předá řízení precedenčnímu analyzátoru, který si další tokeny vyžádá prostřednictvím parseru.
+- Dno zásobníku označuje symbol $, který zároveň značí konec výrazu.
 - Nejvrchnější terminál na zásobníku se porovná s aktuálním symbolem na vstupu a podle jejich vztahu v precedenční tabulce se provede operace redukce nebo operace vložení vstupního symbolu na zásobník.
 - Při redukcích se rovnou vytváří abstraktní syntaktický strom (AST).
 - Kořen AST se po úspěšném zpracování předá zpět parseru.
-- Pokud je místo operandu klíčové slovo if, tak precedenční analyzátor zavolá funkci parseru, která zpracuje celý výraz (if..then..else) a vrátí jeho AST, které se vloží jako výraz na zásobník.
+- Pokud je místo operandu klíčové slovo `if`, tak precedenční analyzátor zavolá funkci parseru, která zpracuje celý výraz `if ... then ... else` a vrátí jeho AST, který se vloží jako výraz na zásobník.
 
 Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslušný chybový kód.
 
@@ -280,64 +280,64 @@ Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslu�
 \newpage
 
 ## Sémantická analýza
-Sémantická analýza dostává od syntaktické analýzy abstraktní syntaktický strom a tabulku symbolů z main.c, ve které jsou předem zaregistrovány pouze vestavěné funkce. Během analýzy doplňuje do stromu typy uzlů a identifikátory proměnných, které následně využívá generátor kódu. Při chybě vypisuje hlášení na standartní chybový výstup a analýzu ukončuje.
+Sémantická analýza dostává od syntaktické analýzy abstraktní syntaktický strom a tabulku symbolů z `main.c`, ve které jsou předem zaregistrovány pouze vestavěné funkce. Během analýzy doplňuje do stromu typy uzlů a identifikátory proměnných, které následně využívá generátor kódu. Při chybě vypisuje hlášení na standardní chybový výstup a analýzu ukončuje.
 
 ### Průchod programem
 Samotná analýza probíhá ve dvou průchodech, aby bylo možné volat funkce definované později.
 
- - **1. průchod:** Pro každou definici funkce se vkládají seznamy parametrů (rozšíření PARAMLISTS), návratové typy a případný příjemce (rozšíření EXTKW) do tabulky symbolů. Neuvedené návratové typy jsou poznamenány a musí se odvodit v druhém průchodu. Tabulka symbolů v této fázi dokáže odhalit redefinice funkcí, či *@main*. Zároveň se kontroluje signatura funkce *@main*. Po prvním průchodu se kontroluje existence funkce *@main*.
+ - **1. průchod:** Pro každou definici funkce se vkládají seznamy parametrů (rozšíření PARAMLISTS), návratové typy a případný příjemce (rozšíření EXTKW) do tabulky symbolů. Neuvedené návratové typy jsou poznamenány a musí se odvodit v druhém průchodu. Tabulka symbolů v této fázi dokáže odhalit redefinici funkce, a to včetně `@main`. Zároveň se kontroluje signatura funkce `@main`. Po prvním průchodu se kontroluje existence funkce `@main`.
 
  - **2. průchod:** Program se prochází od začátku a kontrolují se těla funkcí. Pokud se při kontrole narazí na volání funkce, jejíž tělo ještě nebylo zkontrolováno, zkontroluje se nejprve tělo volané funkce pro odvození jejího návratového typu. Z tohoto důvodu udržuje tabulka symbolů stavy odvození. Hlavní smyčka takto zkontrolované funkce přeskakuje. Narazí-li se na volání funkce, jejíž kontrola právě probíhá, jedná se o rekurzi a všechny funkce v tomto cyklu musí mít explicitní návratový typ.
 
 ### Kontroly v tělech funkcí
-Každý blok, větev if a tělo cyklu má vlastní rozsah platnosti. Parametry, příjemce a řídicí proměnná cyklu for jsou neměnné. Při kontrole těl funkcí se dbá na:
+Každý blok, větev if a tělo cyklu má vlastní rozsah platnosti. Parametry, příjemce a řídicí proměnná `for` cyklu jsou neměnné. Při kontrole těl funkcí se dbá na:
 
  - **Proměnné:** u definice musí být hodnota přiřaditelná do uvedeného typu, jinak se typ odvodí z hodnoty. U přiřazení musí proměnná existovat a být měnitelná.
- - **Podmínky:** podmínky pro if a while a stráže for cyklu musí být typu Boolean. Meze a krok cyklu for musí být typu Int a krok nesmí být nulový literál.
+ - **Podmínky:** podmínky pro if a while a stráže cyklu `for` musí být typu Boolean. Meze a krok cyklu `for` musí být typu Int a krok nesmí být nulový literál.
  - **Return:** return s hodnotou vyžaduje explicitní návratový typ a hodnota s ním musí být kompatibilní. Return bez hodnoty je povolen pouze ve funkci s explicitním návratovým typem Unit.
  - **Volání:** kontroluje se počet seznamů argumentů, počet argumentů v nich a jejich typy. U volání metody se funkce vyhledává podle typu příjemce. Parser nedokáže rozlišit proměnnou od volání funkce bez seznamu argumentů, proto se identifikátor, který neodpovídá žádné proměnné, přepíše na volání funkce.
  - **Výrazy:** probíhá kontrola typů operandů a správných operací nad nimi. Typ Int je implicitně převeden na Double, pokud je to potřeba.
 
 ### Vyhledávací struktura
-Vyhledávací struktura je implementována variantou 2 (hashovací tabulka je implementována jako ADT a tabulka symbolů ji následně interně využívá) a stará se o udržování platných rozsahů, kontrolu redefinic funkcí a proměnných. Pro ukládání informací o jednotlivých funkcích je využívána hashovací tabulka, každý záznam funkce obsahuje zásobník jejích proměnných. Tato struktura se následně předává generátoru kódu.
+Vyhledávací struktura je implementována variantou 2 (hashovací tabulka je implementována jako ADT a tabulka symbolů ji následně interně využívá) a stará se o udržování rozsahů platnosti, kontrolu redefinic funkcí a proměnných. Pro ukládání informací o jednotlivých funkcích je využívána hashovací tabulka, každý záznam funkce obsahuje zásobník jejích proměnných. Tato struktura se následně předává generátoru kódu.
 
 \newpage
 
 ## Generátor kódu
-Generátor rekurzivně prochází AST od hlavního uzlu `AST_PROGRAM`. Podpůrně také využívá tabulku symbolů pro zjištění dodatečných informací o daných funkcích. Na začátku definuje pomocné globální proměnné a poté zavolá funkci označenou anotací `@main`. Generuje zároveň také vestavěné funkce, které připojí ke každému programu na konec.
+Generátor rekurzivně prochází AST od hlavního uzlu `AST_PROGRAM`. Podpůrně také využívá tabulku symbolů pro zjištění dodatečných informací o daných funkcích. Na začátku definuje pomocné globální proměnné a poté zavolá funkci označenou anotací `@main`. Zároveň generuje vestavěné funkce, které připojí na konec každého programu.
 
 ### Vyhodnocování
-Výrazy (literály, proměnné, operace, volání) jsou vyhodnocovány post-order průchodem na datovém zásobníku. Příkazy (podmínky, cykly, přiřazení, návrat, ...) obecně z datového zásobníku berou/konzumují vyhodnocené výrazy a ty ukládají do proměnných/podle nich se rozhodují.
+Výrazy (literály, proměnné, operace, volání) jsou vyhodnocovány post-order průchodem na datovém zásobníku. Příkazy (podmínky, cykly, přiřazení, návrat...) vyhodnocené výrazy z datového zásobníku odebírají a buďto je uloží do proměnných, a nebo se podle nich rozhodují.
 
-Vyhodnocené samotné výrazy na řádku (volání funkce, `Unit` literál značící prázdný blok, ...) se musí specificky odstranit ze zásobníku, aby na něm nezůstala nepoužitá data a nekazila tak další vyhodnocování výrazů. To ale neplatí v případech, kdy je nutné vrátit hodnotu na konci určitých bloků (implicitní návratová hodnota funkce/if výrazu).
+Hodnoty výrazů použitých samostatně jako příkaz (volání funkce, `Unit` literál značící prázdný blok...) je nutné ze zásobníku specificky odstranit, aby na něm nezůstala nepoužitá data a nekazila další vyhodnocování výrazů. To ale neplatí v případech, kdy je nutné vrátit hodnotu na konci určitých bloků (implicitní návratová hodnota funkce nebo `if` výrazu).
 
-### Volací konvence
-Volající postupně vyhodnotí všechny argumenty na datový zásobník, vytvoří nový dočasný rámec, v němž definuje parametry volané funkce jako proměnné, a v opačném pořadí ze zásobníku přiřadí hodnoty do argumentových proměnných. Dočasný rámec přesune na vrchol zásobníku rámců, zavolá danou funkci a po návratu z funkce odebere rámec zavolané funkce z vrcholu zásobníku. Návratová hodnota je předána na vrchol datového zásobníku pro další použití.
+### Konvence volání
+Volající postupně vyhodnotí všechny argumenty na datový zásobník, vytvoří nový dočasný rámec, v němž definuje parametry volané funkce jako proměnné, a v opačném pořadí ze zásobníku přiřadí hodnoty do parametrů. Dočasný rámec přesune na vrchol zásobníku rámců, zavolá danou funkci a po návratu z funkce odebere rámec volané funkce z vrcholu zásobníku. Návratová hodnota je předána na vrchol datového zásobníku pro další použití.
 
 \newpage
 
 ## Rozšíření
 
 ### FUNEXP
-Rozšíření umožňuje volání funkcí uvnitř výrazů. Identifikátor následovaný otevírací závorkou se zpracuje jako název funkce uzlu `AST_CALL`. Argumenty pak zpracuje precedenční analýza a uloží do uzlu. Precedenční analyzátor pak pokračuje, dokud nezpracuje celý výraz jako obvykle. 
+Rozšíření umožňuje volání funkcí uvnitř výrazů. Identifikátor následovaný otevírací závorkou se zpracuje jako název funkce uzlu `AST_CALL`. Argumenty pak zpracuje precedenční analýza a uloží do uzlu. Precedenční analyzátor pak pokračuje, dokud nezpracuje celý výraz jako obvykle.
+
+### BOOLTHEN
+Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální analýza rozpoznává nové tokeny a klíčová slova `true` a `false`. Precedenční analyzátor pracuje s novými operátory podle pravidel asociativity a priorit operátorů.
+
+### CONTROL
+Rozšíření přidává cyklus `for` a možnost používat `if` jako výraz. Lexikální analýza rozpoznává nová klíčová slova a tokeny. Pokud precedenční analyzátor očekává operand a dostane `if`, zavolá syntaktickou analýzu, která výraz `if ... then ... else` zpracuje a vrátí jako AST, se kterým precedenční analýza dále pracuje.
 
 ### VALMEM
 Rozšíření umožňuje využití tečkové notace. Lexikální analyzátor rozpoznává, zda je tečka za číselným literálem desetinná tečka nebo tečková notace. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument a nastaví se příznak `is_member`.
 
 ### INTERPOLATEDS
-Rozšíření se týkalo především lexikální analýzy a precedenční analýzy a umožňuje interpolované řetězce. Lexikální analyzátor čte řetězec tak, že běžný text vrací jako token řetězcového literálu, výrazy typu `$id` vrací jako token identifikátoru a `${vyraz}` vrací jako běžné tokeny. Pro vnořené interpolace se využívá zásobník struktur implementovaný jako jednosměrně vázaný seznam. Precedenční analyzátor zpracuje výrazy uvnitř `${vyraz}`, vloží hodnoty z `$id` a `${vyraz}` do volání `toStr()` a jednotlivé části propojí, aby vrátil jeden ucelený výraz.
-
-### PARAMLISTS
-Rozšíření umožňuje definice a volání funkcí bez seznamu parametrů nebo s více jak jedním seznamem parametrů. Precedenční analyzátor zpracovává seznamy argumentů a do uzlu `AST_CALL` ukládá počet seznamů a počet argumentů každého seznamu.
+Rozšíření se týká především lexikální analýzy a precedenční analýzy a umožňuje interpolované řetězce. Lexikální analyzátor čte řetězec tak, že běžný text vrací jako token řetězcového literálu, výrazy typu `$id` vrací jako token identifikátoru a `${výraz}` vrací jako běžné tokeny. Pro vnořené interpolace se využívá zásobník struktur implementovaný jako jednosměrně vázaný seznam. Precedenční analyzátor zpracuje výrazy uvnitř `${výraz}`, vloží hodnoty z `$id` a `${výraz}` do volání `toStr()` a jednotlivé části propojí, aby vrátil jeden ucelený výraz.
 
 ### EXTKW
-Rozšíření umožňuje vlastní definice funkcí využité v tečkové notaci. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument, nastaví se příznak `is_member` a případně se zpracují také argumenty funkce.
+Rozšíření umožňuje definovat vlastní funkce, které lze volat tečkovou notací. Precedenční analyzátor vytvoří uzel `AST_CALL`, jehož název funkce se vezme z identifikátoru za tečkou. Hodnota před tečkou se vezme jako argument, nastaví se příznak `is_member` a případně se zpracují také argumenty funkce.
 
-### CONTROL
-Rozšíření přidává cyklus `for` a možnost používat `if` jako výraz. Lexikální analýza rozpoznává nová klíčová slova a tokeny. Precedenční analyzátor, pokud očekává operand a dostane if, tak zavolá syntaktickou analýzu, která výraz `if...then...else` zpracuje a pošle zpět jako `AST`, se kterým precedenční analýza opět pracuje.
-
-### BOOLTHEN
-Rozšíření umožňuje pracovat s pravdivostními hodnotami. Lexikální analýza rozpoznává nové tokeny a klíčová slova `true` a `false`. Precedenční analyzátor pracuje s novými operátory podle pravidel asociativity a priorit operátorů.
+### PARAMLISTS
+Rozšíření umožňuje definice a volání funkcí bez seznamu parametrů nebo s více než jedním seznamem parametrů. Precedenční analyzátor zpracovává seznamy argumentů a do uzlu `AST_CALL` ukládá počet seznamů a počet argumentů každého seznamu.
 
 \newpage
 
