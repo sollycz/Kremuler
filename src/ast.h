@@ -22,7 +22,7 @@ typedef enum AstKind {
     /** ((statements)) */
     AST_WHILE,
     AST_FOR, // CONTROL
-    AST_IF,  // also used as an expression (CONTROL)
+    AST_IF, // also used as an expression (CONTROL)
     AST_VARIABLE_DEFINITION,
     AST_ASSIGN,
     AST_RETURN,
@@ -53,7 +53,7 @@ typedef enum AstOperatorType {
     OP_NE, // !=
     /** (binary) logical operators */
     OP_AND, // &&
-    OP_OR,  // ||
+    OP_OR, // ||
 } AstOperatorType;
 
 typedef struct AstNode AstNode;
@@ -61,15 +61,15 @@ typedef struct AstNode AstNode;
 // dynamic list of nodes
 // (functions in the program, parameters in a function, statements inside of a block, arguments in a function call)
 typedef struct AstNodeList {
-    AstNode **items;
+    AstNode** items;
     size_t count;
 } AstNodeList;
 
 // AST node
 struct AstNode {
     AstKind node_kind;
-    unsigned int line;   // source line for error messages
-    DataType type;       // TYPE_UNKNOWN if not yet determined
+    unsigned int line; // source line for error messages
+    DataType type; // TYPE_UNKNOWN if not yet determined
     unsigned int var_id; // unique id for variables, will be assigned by the semantic analyser
 
     union {
@@ -78,18 +78,18 @@ struct AstNode {
         } program;
 
         struct {
-            char *name;
+            char* name;
             AstNodeList parameters; // all parameters from all lists, flattened
-            size_t *list_sizes;     // number of parameters in each list
-            size_t list_count;      // always set by the parser: 0 = no parentheses ("def answer"), "def f()" = 1
-            DataType return_type;   // also TYPE_UNKNOWN if not explicitly written
-            AstNode *block;
-            AstNode *receiver; // AST_PARAMETER of the extended value, NULL for a normal function (EXTKW)
+            size_t* list_sizes; // number of parameters in each list
+            size_t list_count; // always set by the parser: 0 = no parentheses ("def answer"), "def f()" = 1
+            DataType return_type; // also TYPE_UNKNOWN if not explicitly written
+            AstNode* block;
+            AstNode* receiver; // AST_PARAMETER of the extended value, NULL for a normal function (EXTKW)
             bool is_main_func;
         } function;
 
         struct {
-            char *name;
+            char* name;
             DataType type;
         } parameter;
 
@@ -98,85 +98,85 @@ struct AstNode {
         } block;
 
         struct {
-            AstNode *condition;
-            AstNode *block;
+            AstNode* condition;
+            AstNode* block;
         } while_statement;
 
         struct {
-            char *var_name;
-            AstNode *from;
-            AstNode *to;
-            AstNode *step;      // NULL if "by" is missing
-            bool inclusive;     // "to" = true, "until" = false
+            char* var_name;
+            AstNode* from;
+            AstNode* to;
+            AstNode* step; // NULL if "by" is missing
+            bool inclusive; // "to" = true, "until" = false
             AstNodeList guards; // conditions of "if" guards, may be empty
-            AstNode *block;
+            AstNode* block;
         } for_statement;
 
         struct {
-            AstNode *condition;
-            AstNode *then_block;
-            AstNode *else_block;
+            AstNode* condition;
+            AstNode* then_block;
+            AstNode* else_block;
             bool is_expression; // a helper bool for codegen, whether the if statement is an expression or a statement
         } if_statement;
 
         struct {
-            char *name;
+            char* name;
             DataType declared_type; // TYPE_UNKNOWN if not written
-            AstNode *value;
+            AstNode* value;
             bool is_mutable; // var = true, val = false
         } variable_definition;
 
         struct {
-            char *name;
-            AstNode *value;
+            char* name;
+            AstNode* value;
         } assign;
 
         struct {
-            AstNode *value; // will be NULL for an "empty" Unit () return
+            AstNode* value; // will be NULL for an "empty" Unit () return
         } return_statement;
 
         struct {
-            AstNode *expression;
+            AstNode* expression;
         } expression_statement;
 
         struct {
             union {
                 int64_t int_val;
                 double double_val;
-                char *string_val;
+                char* string_val;
             } value;
         } literal;
 
         struct {
-            char *name;
+            char* name;
         } identifier;
 
         struct {
             AstOperatorType operator_type;
-            AstNode *operand;
+            AstNode* operand;
         } unary;
 
         struct {
             AstOperatorType operator_type;
-            AstNode *left;
-            AstNode *right;
+            AstNode* left;
+            AstNode* right;
         } binary;
 
         struct {
-            char *name;
+            char* name;
             // x.plus(1)(2): args = [x, 1, 2], arg_list_sizes = [1, 1], arg_list_count = 2, is_member = true
-            AstNodeList args;       // flattened, the receiver is args[0] if is_member
-            size_t *arg_list_sizes; // number of arguments in each list, the receiver is not counted
-            size_t arg_list_count;  // always set by the parser: 0 = no parentheses ("x.twice")
+            AstNodeList args; // flattened, the receiver is args[0] if is_member
+            size_t* arg_list_sizes; // number of arguments in each list, the receiver is not counted
+            size_t arg_list_count; // always set by the parser: 0 = no parentheses ("x.twice")
             bool is_member;
         } call;
     } as;
 };
 
-AstNode *ast_new(AstKind kind, unsigned int line);
-bool ast_list_push(AstNodeList *list, AstNode *node);
-void ast_free(AstNode *node);
+AstNode* ast_new(AstKind kind, unsigned int line);
+bool ast_list_push(AstNodeList* list, AstNode* node);
+void ast_free(AstNode* node);
 
-void ast_mark_if_expression(AstNode *node);
+void ast_mark_if_expression(AstNode* node);
 
 #endif

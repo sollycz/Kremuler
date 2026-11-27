@@ -7,10 +7,10 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
-typedef enum token_type {
+typedef enum TokenType {
     TOK_KW_VAR,
     TOK_KW_DEF,
     TOK_KW_DO,
@@ -68,13 +68,13 @@ typedef enum token_type {
     TOK_DEDENT
 } TokenType;
 
-typedef union token_data {
+typedef union TokenData {
     int64_t num_int_val;
     double num_float_val;
-    char *str_val;
+    char* str_val;
 } TokenData;
 
-typedef struct token {
+typedef struct Token {
     TokenType type;
     TokenData data;
     unsigned int indent; // počet mezer od začátku

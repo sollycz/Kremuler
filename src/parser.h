@@ -23,36 +23,36 @@ typedef struct Parser {
     Token current;
     Token lookahead; // token after the current one
     bool has_lookahead;
-    unsigned int *indent_stack; // for keeping track of indentation [0] -> [0, 4] -> ...
+    unsigned int* indent_stack; // for keeping track of indentation [0] -> [0, 4] -> ...
     size_t indent_count;
-    bool at_line_start;      // (is true after TOK_EOL or at the start of the file)
+    bool at_line_start; // (is true after TOK_EOL or at the start of the file)
     TokenType previous_type; // type of the token before current (CONTROL)
 } Parser;
 
 // initializes the parser
 // (PARSE_INTERNAL_ERROR if memory allocation fails)
-ParseResult parser_init(Parser *p);
+ParseResult parser_init(Parser* p);
 
 // frees the resources used by the parser
-void parser_destroy(Parser *p);
+void parser_destroy(Parser* p);
 
 // moves p->current to the next token received from the scanner
 // also frees the string of the previous token, so if you need to keep it:
 //  1. copy the pointer
 //  2. set p->current.data.str_val to NULL
 //  3. only then call next_token(p)
-ParseResult next_token(Parser *p);
+ParseResult next_token(Parser* p);
 
 // stores the type of the token after p->current into *type without moving the parser to it
 // (also must not be called when current token is TOK_EOL, since that would skip the indentation of the next line)
-ParseResult lookahead_token(Parser *p, TokenType *type);
+ParseResult lookahead_token(Parser* p, TokenType* type);
 
 // parses the whole input file and stores the root AST node into 'out'
-ParseResult parse_program(Parser *p, AstNode **out);
+ParseResult parse_program(Parser* p, AstNode** out);
 
 // parses an if used as a value into 'out', the else branch is required
 // (otherwise PARSE_SYNTAX_ERROR)
 // ((the precedence parser calls it for an if inside an expression, the current token must be TOK_KW_IF))
-ParseResult parse_if_expression(Parser *p, AstNode **out);
+ParseResult parse_if_expression(Parser* p, AstNode** out);
 
 #endif

@@ -7,9 +7,9 @@
 
 #ifndef PRECEDENCE_PARSER_H
 #define PRECEDENCE_PARSER_H
-#include "token.h"
 #include "ast.h"
 #include "parser.h"
+#include "token.h"
 
 typedef enum {
     SYMBOL_PLUS,
@@ -47,6 +47,6 @@ typedef enum {
  * @return PARSE_OK on success, otherwise parser error code
  * @note The expression terminator is left unconsumed.
  */
-ParseResult parse_expression(Parser *parser, AstNode **result);
+ParseResult parse_expression(Parser* parser, AstNode** result);
 
 #endif

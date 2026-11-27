@@ -7,14 +7,14 @@
 
 #include "scanner.h"
 #include "scanner_buffer.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 typedef enum {
     // Start
-    STATE_START,                    
+    STATE_START,
 
     // Identifiers
     STATE_IDENTIFIER,
@@ -81,10 +81,10 @@ typedef enum {
     INTERPOLATED_MODE_ENDED
 } InterpolatedMode;
 
-typedef struct interpolation_state {
+typedef struct InterpolationState {
     InterpolatedMode mode;
     bool reading_expression;
-    struct interpolation_state *previous;
+    struct InterpolationState* previous;
 } InterpolationState;
 
 typedef enum {
@@ -109,7 +109,8 @@ typedef enum {
  * @param[in] text word to classify
  * @return TOK_KW_*** if keyword is found, otherwise TOK_ID
  */
-static TokenType keyword_or_id(const char *text) {
+static TokenType keyword_or_id(const char* text)
+{
     if (strcmp(text, "var") == 0) {
         return TOK_KW_VAR;
     }
@@ -180,82 +181,83 @@ static unsigned int last_column = 1;
 // nesting flags
 static unsigned int parentheses_depth = 0;
 static unsigned int comments_depth = 0;
-static InterpolationState current_interpolation = {0};
+static InterpolationState current_interpolation = { 0 };
 
 // indentation
-static bool reading_indentation = true;     // count spaces before the first token
-static unsigned int current_indent = 0;     // counted space indentation
-static bool tab_in_indent = false;          // if there is a tab in indentation before token -> lexical error
+static bool reading_indentation = true; // count spaces before the first token
+static unsigned int current_indent = 0; // counted space indentation
+static bool tab_in_indent = false; // if there is a tab in indentation before token -> lexical error
 
 // line ending
-static bool line_has_token = false;         // ignore lines that dont have token
-static bool comment_has_lf = false;         // checks for tokens after end of multiline comment
+static bool line_has_token = false; // ignore lines that dont have token
+static bool comment_has_lf = false; // checks for tokens after end of multiline comment
 static bool trailing_comma_allowed = false; // in parentheses after comma there can be a NEWLINE
 
 // pending token
-static bool processing_dot = false;          // VALMEM extension
+static bool processing_dot = false; // VALMEM extension
 
 /**
  * @brief prints an error message to stderr
  * @param[in] message error to report
  * @return SCANNER_OK for STDERR_NONE, otherwise corresponding error code
  */
-static ScannerErrorCode scanner_error_message(StderrMessage message) {
+static ScannerErrorCode scanner_error_message(StderrMessage message)
+{
     switch (message) {
-        case STDERR_NONE:
-            return SCANNER_OK;
+    case STDERR_NONE:
+        return SCANNER_OK;
 
-        case STDERR_UNKNOWN_CHARACTER:
-            fprintf(stderr, "l:%u c:%u - unknown character!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
+    case STDERR_UNKNOWN_CHARACTER:
+        fprintf(stderr, "l:%u c:%u - unknown character!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_INVALID_IDENTIFIER:
-            fprintf(stderr, "l:%u c:%u - invalid identifier!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
+    case STDERR_INVALID_IDENTIFIER:
+        fprintf(stderr, "l:%u c:%u - invalid identifier!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_INVALID_NUMBER:
-            fprintf(stderr, "l:%u c:%u - invalid number!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
-            
-        case STDERR_INVALID_ESCAPE:
-            fprintf(stderr, "l:%u c:%u - invalid escape sequence!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
-        
-        case STDERR_INVALID_INTERPOLATION:
-            fprintf(stderr, "l:%u c:%u - invalid interpolation!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
-            
-        case STDERR_OPEN_STRING:
-            fprintf(stderr, "l:%u c:%u - string is not ended!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
+    case STDERR_INVALID_NUMBER:
+        fprintf(stderr, "l:%u c:%u - invalid number!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_OPEN_COMMENT:
-            fprintf(stderr, "l:%u c:%u - comment is not ended!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
+    case STDERR_INVALID_ESCAPE:
+        fprintf(stderr, "l:%u c:%u - invalid escape sequence!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_OPEN_INTERPOLATION:
-            fprintf(stderr, "l:%u c:%u - interpolation is not ended!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
+    case STDERR_INVALID_INTERPOLATION:
+        fprintf(stderr, "l:%u c:%u - invalid interpolation!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_TAB_IN_INDENT:
-            fprintf(stderr, "l:%u c:%u - there is tab in the indentation!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
+    case STDERR_OPEN_STRING:
+        fprintf(stderr, "l:%u c:%u - string is not ended!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_TOKEN_AFTER_COMMENT:
-            fprintf(stderr, "l:%u c:%u - there is a token after a comment!\n", last_line, last_column);
-            return SCANNER_LEXICAL_ERROR;
+    case STDERR_OPEN_COMMENT:
+        fprintf(stderr, "l:%u c:%u - comment is not ended!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_MEMORY_ERROR:
-            fprintf(stderr, "memory allocation has failed!\n");
-            return SCANNER_MEMORY_ERROR;
+    case STDERR_OPEN_INTERPOLATION:
+        fprintf(stderr, "l:%u c:%u - interpolation is not ended!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        case STDERR_STDIN_ERROR:
-            fprintf(stderr, "reading has failed!\n");
-            return SCANNER_READ_ERROR;
+    case STDERR_TAB_IN_INDENT:
+        fprintf(stderr, "l:%u c:%u - there is tab in the indentation!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
 
-        default:
-            fprintf(stderr, "internal scanner error has failed!\n");
-            return SCANNER_INVALID_STATE_ERROR;
+    case STDERR_TOKEN_AFTER_COMMENT:
+        fprintf(stderr, "l:%u c:%u - there is a token after a comment!\n", last_line, last_column);
+        return SCANNER_LEXICAL_ERROR;
+
+    case STDERR_MEMORY_ERROR:
+        fprintf(stderr, "memory allocation has failed!\n");
+        return SCANNER_MEMORY_ERROR;
+
+    case STDERR_STDIN_ERROR:
+        fprintf(stderr, "reading has failed!\n");
+        return SCANNER_READ_ERROR;
+
+    default:
+        fprintf(stderr, "internal scanner error has failed!\n");
+        return SCANNER_INVALID_STATE_ERROR;
     }
 }
 
@@ -263,7 +265,8 @@ static ScannerErrorCode scanner_error_message(StderrMessage message) {
  * @brief reads the next character from stdin and updates the position tracker
  * @return character value as int, or EOF at end of input or on a read error
  */
-static int scanner_getchar(void) {
+static int scanner_getchar(void)
+{
     last_line = next_line;
     last_column = next_column;
 
@@ -284,7 +287,8 @@ static int scanner_getchar(void) {
  * @param[in] c character to return to stdin
  * @return character that was returned, or EOF if return failed or the character is EOF
  */
-static int scanner_ungetc(int c) {
+static int scanner_ungetc(int c)
+{
     if (c == EOF) {
         return EOF;
     }
@@ -303,8 +307,9 @@ static int scanner_ungetc(int c) {
  * @brief pushes the current interpolation state to a stack
  * @return STDERR_NONE on success, otherwise STDERR_MEMORY_ERROR
  */
-static StderrMessage interpolation_push(void) {
-    InterpolationState *stack_node = malloc(sizeof(*stack_node));
+static StderrMessage interpolation_push(void)
+{
+    InterpolationState* stack_node = malloc(sizeof(*stack_node));
     if (stack_node == NULL) {
         return STDERR_MEMORY_ERROR;
     }
@@ -315,16 +320,17 @@ static StderrMessage interpolation_push(void) {
     return STDERR_NONE;
 }
 
-/** 
- * @brief pop and restore the last saved interpolation state out of a stack 
+/**
+ * @brief pop and restore the last saved interpolation state out of a stack
  * @return STDERR_NONE on success, otherwise STDERR_INVALID_STATE if stack is empty
-*/
-static StderrMessage interpolation_pop(void) {
+ */
+static StderrMessage interpolation_pop(void)
+{
     if (current_interpolation.previous == NULL) {
         return STDERR_INVALID_STATE;
     }
 
-    InterpolationState *stack_node = current_interpolation.previous;
+    InterpolationState* stack_node = current_interpolation.previous;
     current_interpolation = *stack_node;
 
     free(stack_node);
@@ -334,9 +340,10 @@ static StderrMessage interpolation_pop(void) {
 /**
  * @brief free the interpolation state stack and reset the current state
  */
-void interpolation_free(void) {
+void interpolation_free(void)
+{
     while (current_interpolation.previous != NULL) {
-        InterpolationState *stack_node = current_interpolation.previous;
+        InterpolationState* stack_node = current_interpolation.previous;
         current_interpolation.previous = stack_node->previous;
 
         free(stack_node);
@@ -349,9 +356,10 @@ void interpolation_free(void) {
 /**
  * @brief processes part of the interpolated string and creates one token
  * @param[out] token receives the token data on success
- * @return STDERR_NONE on success, otherwise the specific scanner error 
+ * @return STDERR_NONE on success, otherwise the specific scanner error
  */
-static StderrMessage scanner_read_interpolated_text(Token *token) {
+static StderrMessage scanner_read_interpolated_text(Token* token)
+{
     if (current_interpolation.mode == INTERPOLATED_MODE_ENDED) {
         token->type = TOK_INTERPOLATED_END;
         token->line = next_line;
@@ -359,7 +367,7 @@ static StderrMessage scanner_read_interpolated_text(Token *token) {
         return interpolation_pop();
     }
 
-    StringBuffer buffer = {0};
+    StringBuffer buffer = { 0 };
     ScannerErrorCode result = buffer_init(&buffer);
     if (result != SCANNER_OK) {
         return STDERR_MEMORY_ERROR;
@@ -527,9 +535,10 @@ static StderrMessage scanner_read_interpolated_text(Token *token) {
 /**
  * @brief reads the next token using the finite state machine
  * @param[out] token receives the token data on success
- * @return STDERR_NONE on success, otherwise the specific scanner error 
+ * @return STDERR_NONE on success, otherwise the specific scanner error
  */
-static StderrMessage scanner_read_token(Token *token) {
+static StderrMessage scanner_read_token(Token* token)
+{
     if (processing_dot == true) {
         token->type = TOK_DOT;
         token->line = next_line;
@@ -542,7 +551,7 @@ static StderrMessage scanner_read_token(Token *token) {
 
     int c = scanner_getchar();
     State state = STATE_START;
-    StringBuffer buffer = {0};
+    StringBuffer buffer = { 0 };
 
     bool string_has_interpolated_prefix = false;
 
@@ -733,8 +742,7 @@ static StderrMessage scanner_read_token(Token *token) {
                 break;
             }
 
-            if (c == '}' && current_interpolation.mode != INTERPOLATED_MODE_NONE &&
-                current_interpolation.reading_expression == true) {
+            if (c == '}' && current_interpolation.mode != INTERPOLATED_MODE_NONE && current_interpolation.reading_expression == true) {
                 token->type = TOK_INTERPOLATION_END;
                 current_interpolation.reading_expression = false;
                 return STDERR_NONE;
@@ -1000,7 +1008,7 @@ static StderrMessage scanner_read_token(Token *token) {
             }
             if (isalpha(c) || (c == '_')) {
                 processing_dot = true;
-                
+
                 scanner_ungetc(c);
                 buffer.length--;
                 buffer.data[buffer.length] = '\0';
@@ -1633,8 +1641,8 @@ static StderrMessage scanner_read_token(Token *token) {
     }
 }
 
-
-ScannerErrorCode scanner_get_token(Token *token) {
+ScannerErrorCode scanner_get_token(Token* token)
+{
     token->indent = 0;
     token->lf_before = false;
 

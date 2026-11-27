@@ -10,28 +10,28 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-static void gen_node(AstNode *node);
-static void gen_program(AstNode *node);
-static void gen_function(AstNode *node);
-static unsigned count_fors(AstNode *block);
-static void gen_block(AstNode *node);
-static void gen_while(AstNode *node);
-static void gen_for(AstNode *node);
-static void gen_if(AstNode *node);
-static void gen_variable_definition(AstNode *node);
-static void gen_assign(AstNode *node);
-static void gen_return(AstNode *node);
-static void gen_expression_statement(AstNode *node);
-static void gen_literal(AstNode *node);
-static void gen_identifier(AstNode *node);
-static void gen_unary_operator(AstNode *node);
-static void gen_binary_operator(AstNode *node);
-static bool is_num(AstNode *node);
-static void gen_call(AstNode *node);
+static void gen_node(AstNode* node);
+static void gen_program(AstNode* node);
+static void gen_function(AstNode* node);
+static unsigned count_fors(AstNode* block);
+static void gen_block(AstNode* node);
+static void gen_while(AstNode* node);
+static void gen_for(AstNode* node);
+static void gen_if(AstNode* node);
+static void gen_variable_definition(AstNode* node);
+static void gen_assign(AstNode* node);
+static void gen_return(AstNode* node);
+static void gen_expression_statement(AstNode* node);
+static void gen_literal(AstNode* node);
+static void gen_identifier(AstNode* node);
+static void gen_unary_operator(AstNode* node);
+static void gen_binary_operator(AstNode* node);
+static bool is_num(AstNode* node);
+static void gen_call(AstNode* node);
 static void gen_builtin_funcs(void);
 
-static stab *st;
-static stab_func *current_func;
+static Stab* st;
+static StabFunc* current_func;
 static bool keep_block_value;
 
 static unsigned if_counter;
@@ -41,7 +41,8 @@ static unsigned skip_counter;
 
 // entry point of the code generator
 // prints IFJcode26 for the whole program to stdout
-void generate_code(AstNode *ast, stab *stab) {
+void generate_code(AstNode* ast, Stab* stab)
+{
     assert(ast != NULL && ast->node_kind == AST_PROGRAM);
     assert(stab != NULL && stab_main(stab));
 
@@ -54,7 +55,8 @@ void generate_code(AstNode *ast, stab *stab) {
 // generate current node
 // selects which func to call based on node_kind
 // uses indirect recursion
-static void gen_node(AstNode *node) {
+static void gen_node(AstNode* node)
+{
     switch (node->node_kind) {
     case AST_PROGRAM:
         gen_program(node);
@@ -109,14 +111,15 @@ static void gen_node(AstNode *node) {
 }
 
 // generate program header, global vars and recurse gen funcs
-static void gen_program(AstNode *node) {
+static void gen_program(AstNode* node)
+{
     printf(".IFJcode26\n");
     printf("DEFVAR GF@tmp1\n");
     printf("DEFVAR GF@tmp2\n");
     printf("DEFVAR GF@tmp3\n");
     printf("DEFVAR GF@tmp4\n");
 
-    stab_func *main = stab_main(st);
+    StabFunc* main = stab_main(st);
 
     printf("CREATEFRAME\n");
     printf("PUSHFRAME\n");
@@ -135,7 +138,8 @@ static void gen_program(AstNode *node) {
 
 // generate func label, DEFVARs of all locals and "for" helper vars
 // then func body and implicit return if needed
-static void gen_function(AstNode *node) {
+static void gen_function(AstNode* node)
+{
     // start of func
     if (node->as.function.receiver == NULL) {
         printf("LABEL %s\n", node->as.function.name);
@@ -143,10 +147,9 @@ static void gen_function(AstNode *node) {
         printf("LABEL $EXTKW$%s$%u\n", node->as.function.name, node->as.function.receiver->as.parameter.type);
     }
 
-    current_func =
-        stab_find_func(st,
-                       node->as.function.name,
-                       node->as.function.receiver != NULL ? &node->as.function.receiver->as.parameter.type : NULL);
+    current_func = stab_find_func(st,
+        node->as.function.name,
+        node->as.function.receiver != NULL ? &node->as.function.receiver->as.parameter.type : NULL);
     assert(current_func != NULL);
 
     // gen DEFVARs for locals throughout the current func
@@ -170,14 +173,13 @@ static void gen_function(AstNode *node) {
     gen_node(node->as.function.block);
 
     // add return in the final statement if only implicit
-    AstNodeList *statements = &node->as.function.block->as.block.statements;
-    AstNode *last = statements->items[statements->count - 1];
+    AstNodeList* statements = &node->as.function.block->as.block.statements;
+    AstNode* last = statements->items[statements->count - 1];
     if (last->node_kind != AST_RETURN) {
         // ret_type == UNIT funcs always return nil
         if (current_func->ret_type == TYPE_UNIT) {
             printf("PUSHS nil@nil\n");
-        } else if ((last->node_kind == AST_EXPRESSION_STATEMENT || last->node_kind == AST_IF) &&
-                   last->type == TYPE_INT && current_func->ret_type == TYPE_DOUBLE) {
+        } else if ((last->node_kind == AST_EXPRESSION_STATEMENT || last->node_kind == AST_IF) && last->type == TYPE_INT && current_func->ret_type == TYPE_DOUBLE) {
             // implicit int to float expansion
             printf("INT2FLOATS\n");
         }
@@ -186,7 +188,8 @@ static void gen_function(AstNode *node) {
 }
 
 // count all "for" statements inside the node (recursively)
-static unsigned count_fors(AstNode *node) {
+static unsigned count_fors(AstNode* node)
+{
     if (node == NULL) {
         return 0;
     }
@@ -204,11 +207,9 @@ static unsigned count_fors(AstNode *node) {
         for (size_t i = 0; i < node->as.for_statement.guards.count; i++) {
             count += count_fors(node->as.for_statement.guards.items[i]);
         }
-        return 1 + count + count_fors(node->as.for_statement.from) + count_fors(node->as.for_statement.to) +
-               count_fors(node->as.for_statement.step) + count_fors(node->as.for_statement.block);
+        return 1 + count + count_fors(node->as.for_statement.from) + count_fors(node->as.for_statement.to) + count_fors(node->as.for_statement.step) + count_fors(node->as.for_statement.block);
     case AST_IF:
-        return count_fors(node->as.if_statement.condition) + count_fors(node->as.if_statement.then_block) +
-               count_fors(node->as.if_statement.else_block);
+        return count_fors(node->as.if_statement.condition) + count_fors(node->as.if_statement.then_block) + count_fors(node->as.if_statement.else_block);
     case AST_VARIABLE_DEFINITION:
         return count_fors(node->as.variable_definition.value);
     case AST_ASSIGN:
@@ -234,7 +235,8 @@ static unsigned count_fors(AstNode *node) {
 
 // generate all statements of a block sequentially
 // pops unused values of expression statements from data stack
-static void gen_block(AstNode *node) {
+static void gen_block(AstNode* node)
+{
     // is the value of the last statement used? (func body or if expression branch)
     bool keep_block_value_local = keep_block_value;
     keep_block_value = false;
@@ -244,22 +246,21 @@ static void gen_block(AstNode *node) {
         gen_node(node->as.block.statements.items[i]);
 
         // pop values of expression statements that won't be used
-        if (node->as.block.statements.items[i]->node_kind == AST_EXPRESSION_STATEMENT &&
-            (!keep_block_value_local || i != node->as.block.statements.count - 1)) {
+        if (node->as.block.statements.items[i]->node_kind == AST_EXPRESSION_STATEMENT && (!keep_block_value_local || i != node->as.block.statements.count - 1)) {
             printf("POPS GF@tmp1\n");
         }
     }
 
     // last statement of a returning block doesn't push a value on stack (val, assign, while, for) -> push Unit
-    AstNode *last = node->as.block.statements.items[node->as.block.statements.count - 1];
-    if (keep_block_value_local && (last->node_kind == AST_VARIABLE_DEFINITION || last->node_kind == AST_ASSIGN ||
-                                   last->node_kind == AST_WHILE || last->node_kind == AST_FOR)) {
+    AstNode* last = node->as.block.statements.items[node->as.block.statements.count - 1];
+    if (keep_block_value_local && (last->node_kind == AST_VARIABLE_DEFINITION || last->node_kind == AST_ASSIGN || last->node_kind == AST_WHILE || last->node_kind == AST_FOR)) {
         printf("PUSHS nil@nil\n");
     }
 }
 
 // generate while cycle
-static void gen_while(AstNode *node) {
+static void gen_while(AstNode* node)
+{
     unsigned while_counter_local = while_counter++;
 
     // condition
@@ -278,9 +279,10 @@ static void gen_while(AstNode *node) {
 }
 
 // CONTROL: generate for cycle
-static void gen_for(AstNode *node) {
+static void gen_for(AstNode* node)
+{
     unsigned for_counter_local = for_counter++;
-    char *iteration_var_name = node->as.for_statement.var_name;
+    char* iteration_var_name = node->as.for_statement.var_name;
     unsigned iteration_var_id = node->var_id;
 
     // eval generator's from, to, step and pop it to tmp vars
@@ -296,8 +298,8 @@ static void gen_for(AstNode *node) {
             printf("JUMPIFNEQ for$zero_check$%u GF@tmp3 int@0\n"
                    "EXIT int@40\n"
                    "LABEL for$zero_check$%u\n",
-                   for_counter_local,
-                   for_counter_local);
+                for_counter_local,
+                for_counter_local);
         }
     } else {
         printf("MOVE GF@tmp3 int@1\n");
@@ -328,28 +330,28 @@ static void gen_for(AstNode *node) {
                "LABEL for$neg_step$%u\n"
                "LT GF@tmp4 GF@tmp1 GF@tmp2\n"
                "JUMPIFEQ for$end$%u GF@tmp4 bool@true\n",
-               for_counter_local,
-               for_counter_local,
-               for_counter_local,
-               for_counter_local,
-               for_counter_local);
+            for_counter_local,
+            for_counter_local,
+            for_counter_local,
+            for_counter_local,
+            for_counter_local);
 
         // calc end
         printf("LABEL for$calc_end$%u\n"
                "MOVE LF@%s$%u GF@tmp1\n"
 
-               "SUB GF@tmp4 GF@tmp2 GF@tmp1\n"      // to - from
-               "IDIV GF@tmp4 GF@tmp4 GF@tmp3\n"     // /= step
-               "ADD GF@tmp4 GF@tmp4 int@1\n"        // += 1
-               "MUL GF@tmp4 GF@tmp4 GF@tmp3\n"      // *= step
+               "SUB GF@tmp4 GF@tmp2 GF@tmp1\n" // to - from
+               "IDIV GF@tmp4 GF@tmp4 GF@tmp3\n" // /= step
+               "ADD GF@tmp4 GF@tmp4 int@1\n" // += 1
+               "MUL GF@tmp4 GF@tmp4 GF@tmp3\n" // *= step
                "ADD LF@for$to$%u GF@tmp4 GF@tmp1\n" // += from
 
                "MOVE LF@for$step$%u GF@tmp3\n",
-               for_counter_local,
-               iteration_var_name,
-               iteration_var_id,
-               for_counter_local,
-               for_counter_local);
+            for_counter_local,
+            iteration_var_name,
+            iteration_var_id,
+            for_counter_local,
+            for_counter_local);
     } else {
         // check generator
         if (node->as.for_statement.inclusive) {
@@ -358,15 +360,15 @@ static void gen_for(AstNode *node) {
             // if (from > to) then 0 cycles
             printf("GT GF@tmp4 GF@tmp1 GF@tmp2\n"
                    "JUMPIFEQ for$end$%u GF@tmp4 bool@true\n",
-                   for_counter_local);
+                for_counter_local);
         } else {
             // exclusive right bound => step = 1
             // if (from >= to) then 0 cycles
             printf("GT GF@tmp4 GF@tmp1 GF@tmp2\n"
                    "JUMPIFEQ for$end$%u GF@tmp4 bool@true\n"
                    "JUMPIFEQ for$end$%u GF@tmp1 GF@tmp2\n",
-                   for_counter_local,
-                   for_counter_local);
+                for_counter_local,
+                for_counter_local);
         }
 
         // calculate end
@@ -374,10 +376,10 @@ static void gen_for(AstNode *node) {
         printf("MOVE LF@%s$%u GF@tmp1\n"
                "MOVE LF@for$to$%u GF@tmp2\n"
                "MOVE LF@for$step$%u GF@tmp3\n",
-               iteration_var_name,
-               iteration_var_id,
-               for_counter_local,
-               for_counter_local);
+            iteration_var_name,
+            iteration_var_id,
+            for_counter_local,
+            for_counter_local);
 
         // ... + (inclusive ? 1 : 0)
         if (node->as.for_statement.inclusive) {
@@ -396,7 +398,7 @@ static void gen_for(AstNode *node) {
         gen_node(node->as.for_statement.guards.items[i]);
         printf("PUSHS bool@false\n"
                "JUMPIFEQS for$continue$%u\n",
-               for_counter_local);
+            for_counter_local);
     }
 
     // inner block
@@ -407,18 +409,18 @@ static void gen_for(AstNode *node) {
 
     // i += step
     printf("ADD LF@%s$%u LF@%s$%u LF@for$step$%u\n",
-           iteration_var_name,
-           iteration_var_id,
-           iteration_var_name,
-           iteration_var_id,
-           for_counter_local);
+        iteration_var_name,
+        iteration_var_id,
+        iteration_var_name,
+        iteration_var_id,
+        for_counter_local);
 
     // if (i == to) end
     printf("JUMPIFEQ for$end$%u LF@%s$%u LF@for$to$%u\n",
-           for_counter_local,
-           iteration_var_name,
-           iteration_var_id,
-           for_counter_local);
+        for_counter_local,
+        iteration_var_name,
+        iteration_var_id,
+        for_counter_local);
 
     // cycle back up for next iteration
     printf("JUMP for$start$%u\n", for_counter_local);
@@ -428,7 +430,8 @@ static void gen_for(AstNode *node) {
 }
 
 // generate if statement with optional else block
-static void gen_if(AstNode *node) {
+static void gen_if(AstNode* node)
+{
     unsigned if_counter_local = if_counter++;
 
     // condition
@@ -441,7 +444,7 @@ static void gen_if(AstNode *node) {
     gen_node(node->as.if_statement.then_block);
 
     // implicit int to float expansion
-    AstNodeList *statements = &node->as.if_statement.then_block->as.block.statements;
+    AstNodeList* statements = &node->as.if_statement.then_block->as.block.statements;
     if (statements->items[statements->count - 1]->type == TYPE_INT && node->type == TYPE_DOUBLE) {
         printf("INT2FLOATS\n");
     }
@@ -468,13 +471,13 @@ static void gen_if(AstNode *node) {
 
 // generate var definition
 // all locals are defined at the func start, so it's just an assignment
-static void gen_variable_definition(AstNode *node) {
+static void gen_variable_definition(AstNode* node)
+{
     // evaluate right-side value first
     gen_node(node->as.variable_definition.value);
 
     // int to float expansion
-    if (node->as.variable_definition.value->type == TYPE_INT &&
-        node->as.variable_definition.declared_type == TYPE_DOUBLE) {
+    if (node->as.variable_definition.value->type == TYPE_INT && node->as.variable_definition.declared_type == TYPE_DOUBLE) {
         printf("INT2FLOATS\n");
     }
 
@@ -484,13 +487,14 @@ static void gen_variable_definition(AstNode *node) {
 }
 
 // generate assignment to an existing var
-static void gen_assign(AstNode *node) {
+static void gen_assign(AstNode* node)
+{
     // evaluate right-side value first
     gen_node(node->as.assign.value);
 
     // get var type to which is assigning
     assert(node->var_id < current_func->locals_count);
-    const stab_var *var = current_func->locals[node->var_id];
+    const StabVar* var = current_func->locals[node->var_id];
 
     // int to float expansion
     if (node->as.assign.value->type == TYPE_INT && var->type == TYPE_DOUBLE) {
@@ -502,7 +506,8 @@ static void gen_assign(AstNode *node) {
 }
 
 // generate return, return value is passed on stack
-static void gen_return(AstNode *node) {
+static void gen_return(AstNode* node)
+{
     // eval return value
     if (node->as.return_statement.value != NULL) {
         gen_node(node->as.return_statement.value);
@@ -526,13 +531,15 @@ static void gen_return(AstNode *node) {
 
 // generate expression statement used as a statement
 // all expressions (see AstKind) pass evaluated value on stack
-static void gen_expression_statement(AstNode *node) {
+static void gen_expression_statement(AstNode* node)
+{
     // recurse deeper
     gen_node(node->as.expression_statement.expression);
 }
 
 // push literal on data stack
-static void gen_literal(AstNode *node) {
+static void gen_literal(AstNode* node)
+{
     // just pushes value on the data stack
     printf("PUSHS ");
 
@@ -572,14 +579,16 @@ static void gen_literal(AstNode *node) {
 }
 
 // push var value on data stack
-static void gen_identifier(AstNode *node) {
+static void gen_identifier(AstNode* node)
+{
     // just pushes value on the data stack
     printf("PUSHS LF@%s$%u\n", node->as.identifier.name, node->var_id);
 }
 
 // generate unary op (-, +, !)
-static void gen_unary_operator(AstNode *node) {
-    AstNode *op = node->as.unary.operand;
+static void gen_unary_operator(AstNode* node)
+{
+    AstNode* op = node->as.unary.operand;
     switch (node->as.unary.operator_type) {
     case OP_NEG:
         assert(op->type == TYPE_INT || op->type == TYPE_DOUBLE);
@@ -615,9 +624,10 @@ static void gen_unary_operator(AstNode *node) {
 
 // generate binary op (+, -, <, >, ==, &&, ||, ...)
 // handles int to float expansion and short circuit for && and ||
-static void gen_binary_operator(AstNode *node) {
-    AstNode *l = node->as.binary.left;
-    AstNode *r = node->as.binary.right;
+static void gen_binary_operator(AstNode* node)
+{
+    AstNode* l = node->as.binary.left;
+    AstNode* r = node->as.binary.right;
 
     // assert types
     switch (node->as.binary.operator_type) {
@@ -661,14 +671,14 @@ static void gen_binary_operator(AstNode *node) {
         printf("PUSHS bool@true\n"
                "JUMPIFEQS $skip$%u\n"
                "PUSHS bool@false\n",
-               skip_save);
+            skip_save);
     }
     // short circuit for AND: false && (don't eval)
     else if (node->as.binary.operator_type == OP_AND) {
         printf("PUSHS bool@false\n"
                "JUMPIFEQS $skip$%u\n"
                "PUSHS bool@true\n",
-               skip_save);
+            skip_save);
     }
 
     // eval right op
@@ -761,38 +771,39 @@ static void gen_binary_operator(AstNode *node) {
                "LABEL $skip$%u\n"
                "PUSHS bool@true\n"
                "LABEL $skip$end$%u\n",
-               skip_save,
-               skip_save,
-               skip_save);
+            skip_save,
+            skip_save,
+            skip_save);
     } else if (node->as.binary.operator_type == OP_AND) {
         printf("JUMP $skip$end$%u\n"
                "LABEL $skip$%u\n"
                "PUSHS bool@false\n"
                "LABEL $skip$end$%u\n",
-               skip_save,
-               skip_save,
-               skip_save);
+            skip_save,
+            skip_save,
+            skip_save);
     }
 }
 
 // returns true if node is type int or float
 // useful for quick type assertion
-static bool is_num(AstNode *node) {
+static bool is_num(AstNode* node)
+{
     return node->type == TYPE_INT || node->type == TYPE_DOUBLE;
 }
 
 // generate func call
 // handles arg eval and assignment to temp/local vars, frame push and pop
-static void gen_call(AstNode *node) {
+static void gen_call(AstNode* node)
+{
     // get the called func
-    stab_func *callee =
-        stab_find_func(st, node->as.call.name, node->as.call.is_member ? &node->as.call.args.items[0]->type : NULL);
+    StabFunc* callee = stab_find_func(st, node->as.call.name, node->as.call.is_member ? &node->as.call.args.items[0]->type : NULL);
     assert(callee != NULL);
 
     // get current param list
-    stab_size_t param_idx = 0;
-    stab_size_t param_list_idx = 0;
-    stab_param_list *param_list = &callee->param_lists[0];
+    StabSize param_idx = 0;
+    StabSize param_list_idx = 0;
+    StabParamList* param_list = &callee->param_lists[0];
 
     // EXTKW: eval extended arg
     if (node->as.call.is_member) {
@@ -802,7 +813,7 @@ static void gen_call(AstNode *node) {
     // eval all args first
     // EXTKW: "extends" param is inserted first into AST's args
     for (size_t i = node->as.call.is_member ? 1 : 0; i < node->as.call.args.count; i++) {
-        AstNode *arg = node->as.call.args.items[i];
+        AstNode* arg = node->as.call.args.items[i];
 
         // eval arg
         gen_node(arg);
@@ -835,7 +846,7 @@ static void gen_call(AstNode *node) {
             param_list = &callee->param_lists[param_list_idx];
             param_idx = param_list->count;
         }
-        const stab_param *param = &param_list->params[--param_idx];
+        const StabParam* param = &param_list->params[--param_idx];
 
         // def param and assign value
         if (callee->is_builtin) {
@@ -871,7 +882,8 @@ static void gen_call(AstNode *node) {
 
 // generate instructions of all builtin funcs
 // builtin params use names without id (e.g.: LF@value)
-static void gen_builtin_funcs(void) {
+static void gen_builtin_funcs(void)
+{
     // print(value: Any): Unit
     printf("LABEL $print\n"
            "PUSHS nil@nil\n"
@@ -922,7 +934,7 @@ static void gen_builtin_funcs(void) {
            "LABEL else$readDouble\n"
            "PUSHS float@%a\n"
            "RETURN\n",
-           0.0f);
+        0.0f);
 
     // readBoolean(): Bool
     printf("LABEL $readBoolean\n"
@@ -1016,8 +1028,8 @@ static void gen_builtin_funcs(void) {
            "GT GF@tmp1 LF@end GF@tmp2\n"
            "JUMPIFEQ else$subStr GF@tmp1 bool@true\n"
 
-           "MOVE GF@tmp1 string@\n"  // op1
-           "MOVE GF@tmp2 string@\n"  // op2
+           "MOVE GF@tmp1 string@\n" // op1
+           "MOVE GF@tmp2 string@\n" // op2
            "MOVE GF@tmp3 LF@start\n" // index
 
            "LABEL while$start$subStr\n"
@@ -1079,5 +1091,5 @@ static void gen_builtin_funcs(void) {
            "LABEL else$floor\n"
            "PUSHS GF@tmp1\n"
            "RETURN\n",
-           1.0f);
+        1.0f);
 }

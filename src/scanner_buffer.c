@@ -6,8 +6,8 @@
  */
 
 #include "scanner_buffer.h"
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #define INIT_CAPACITY 16
 
@@ -17,7 +17,7 @@
  * @return SCANNER_OK, otherwise SCANNER_MEMORY_ERROR
  * @note the buffer is initially empty and terminated with '\0'
  */
-ScannerErrorCode buffer_init(StringBuffer *buffer)
+ScannerErrorCode buffer_init(StringBuffer* buffer)
 {
     buffer->data = malloc(INIT_CAPACITY);
     if (buffer->data == NULL) {
@@ -35,7 +35,7 @@ ScannerErrorCode buffer_init(StringBuffer *buffer)
  * @brief free dynamic memory buffer
  * @param[in, out] buffer whose memory is freed and fields are reset
  */
-void buffer_free(StringBuffer *buffer)
+void buffer_free(StringBuffer* buffer)
 {
     free(buffer->data);
 
@@ -49,7 +49,7 @@ void buffer_free(StringBuffer *buffer)
  * @param[in, out] buffer whose capacity is doubled
  * @return SCANNER_OK on success, otherwise SCANNER_MEMORY_ERROR
  */
-ScannerErrorCode buffer_increase(StringBuffer *buffer)
+ScannerErrorCode buffer_increase(StringBuffer* buffer)
 {
     if (buffer->capacity > SIZE_MAX / 2) {
         return SCANNER_MEMORY_ERROR;
@@ -57,7 +57,7 @@ ScannerErrorCode buffer_increase(StringBuffer *buffer)
 
     size_t new_capacity = buffer->capacity * 2;
 
-    char *new_data = realloc(buffer->data, new_capacity);
+    char* new_data = realloc(buffer->data, new_capacity);
     if (new_data == NULL) {
         return SCANNER_MEMORY_ERROR;
     }
@@ -74,7 +74,7 @@ ScannerErrorCode buffer_increase(StringBuffer *buffer)
  * @param[in] c character that will be added
  * @return SCANNER_OK on success, otherwise SCANNER_MEMORY_ERROR
  */
-ScannerErrorCode buffer_append(StringBuffer *buffer, char c)
+ScannerErrorCode buffer_append(StringBuffer* buffer, char c)
 {
     if (buffer->length + 2 > buffer->capacity) {
         ScannerErrorCode result = buffer_increase(buffer);
