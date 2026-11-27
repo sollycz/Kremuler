@@ -106,13 +106,13 @@ Na začátku jsme se v týmu dohodli na pravidlech používání AI. LLM byly vy
 \textbf{Modul} & \textbf{Popis} \\ \hline\hline
 \texttt{main.c} & Vstupní bod překladače, postupně volá jednotlivé části a při chybě vrátí návratový kód. \\ \hline
 \texttt{token.h} & Struktura tokenu obsahující jeho typ, data, pozici ve zdrojovém kódu a odsazení řádku. \\ \hline
-\texttt{types.h} & \\ \hline
+\texttt{types.h} & Výčet datových typů jazyka IFJ26, včetně pomocných hodnot pro sémantickou analýzu. \\ \hline
 \texttt{scanner.c/.h} & Lexikální analyzátor. Zpracovává zdrojový kód pomocí deterministického konečného automatu a předává syntaktickému analyzátoru tokeny. \\ \hline
 \texttt{scanner\_buffer.c/.h} & Dynamicky alokovaná vyrovnávací paměť lexikálního analyzátoru. Při zaplnění zdvojnásobí svoji kapacitu. \\ \hline
-\texttt{parser.c/.h} & \\ \hline
+\texttt{parser.c/.h} & Syntaktický analyzátor. Implementován na principu rekurzivního sestupu, primárně dle LL(1) gramatiky. Sestavuje abstraktní syntaktický strom a výrazy předává na zpracování precedenčnímu analyzátoru. \\ \hline
 \texttt{precedence\_parser.c/.h} & Precedenční analyzátor. Zpracovává výrazy pomocí precedenční tabulky a redukčních pravidel a vytváří AST. \\ \hline
 \texttt{precedence\_stack.c/.h} & Dynamicky alokovaný zásobník precedenčního analyzátoru. Při zaplnění zdvojnásobí svoji kapacitu. \\ \hline
-\texttt{ast.c/.h} & \\ \hline
+\texttt{ast.c/.h} & Abstraktní syntakticky strom. Slouží jako rozhraní mezi syntaktickou analýzou, sémantickou analýzou a generátorem kódu. \\ \hline
 \texttt{hashtable.c/.h} & ADT obecné hashovací tabulky s otevřeným adresováním. Dle potřeby zvětšuje či přehashuje tabulku. \\ \hline
 \texttt{symtable.c/.h} & ADT tabulky symbolů využívající hashovací tabulku a hashovací funkci djb2. Uchovává informace o funkcích a proměnných, stará se o rozsahy platnosti, zastínění proměnných a přetížení funkcí. \\ \hline
 \texttt{semantic.c/.h} & Dvouprůchodový sémantický analyzátor. V prvním průchodu registruje všechny funkce, ve druhém kontroluje jejich těla. \\ \hline
@@ -185,9 +185,19 @@ Při chybě scanner vypíše její popis na standardní chybový výstup a vrát
 \restoregeometry
 ```
 
-## Precedenční syntaktická analýza
+## Syntaktická analýza
 
-### Implementace
+Syntaktický analyzátor (parser) byl implementován na principu rekurzivního sestupu podle LL(1) (výjimečně, pro případy začínající identifikátorem, LL(2)) gramatiky. Na zpracování odsazení byl použit zásobník. Lexikální analýza totiž vrací odsazení aktuálního řádku pro každý token, a nejen tehdy, kdy dochází ke změně. Danou kontrolu má tedy na starost parser, jenž při detekci změny hloubky odsazení vloží pomocí funkce `next_token` potřebný počet `INDENT` a `DEDENT` tokenu. V případě, že dojde k ukončení více bloků najednou, je potřeba opakovaně porovnávat odsazení a vkládat tokeny `DEDENT`, dokud odsazení opět neodpovídá vrcholu zásobníku odsazení.
+Stejné balancování odsazení se provede i při ukončení souboru (tokenu EOF) pro bloky, které zůstanou otevřené na konci souboru.
+
+Jednořádková těla větví `if/else` nebo cyklu `for` se při průchodu parserem zabalují do `AST_BLOCK`, takže sémantická analýza a generátor kódu mohou počítat s tím, že tělo větve je vždy blok.
+
+Když syntaktická analýza narazí na jakýkoliv výraz (v gramatice `<expression>`), zavolá `parse_expression` z precedenčního analyzátoru. Precedence dostává stejnou strukturu `Parser` jako vlastní funkce syntaktické analýzy a využívá potom zpětně `next_token`, aby načítala další tokeny. Díky tomu se odsazení řeší pouze na jednom místě.
+Když precedence čeká operand a dostane `if`, zavolá zpátky parserovu `parse_if_expression`. Parser a precedence se tak mohou navzájem rekurzivně volat.
+
+### Precedenční syntaktická analýza
+
+#### Implementace
 
 Precedenční analyzátor získává tokeny prostřednictvím syntaktického analyzátoru (parseru) a zpracovává výrazy podle precedenční tabulky a redukčních pravidel.
 
@@ -201,7 +211,7 @@ Precedenční analyzátor získává tokeny prostřednictvím syntaktického ana
 
 Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslušný chybový kód.
 
-### Pravidla redukce výrazů
+#### Pravidla redukce výrazů
 
 ```{=latex}
 \begingroup
@@ -225,7 +235,7 @@ Při chybě se zpracování výrazu ukončí a volajícímu se vrátí příslu�
 ```
 \newpage
 
-### Precedenční tabulka
+#### Precedenční tabulka
 
 ```{=latex}
 \newlength{\cellwidth}
