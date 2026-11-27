@@ -13,6 +13,7 @@ header-includes:
   - \usepackage{colortbl}
   - \usepackage{pdflscape}
   - \usepackage{tabularx}
+  - \usepackage{longtable}
   - \usepackage{caption}
   - \captionsetup{labelfont=bf, labelsep=colon}
 ---
@@ -118,7 +119,6 @@ Na začátku jsme se v týmu dohodli na pravidlech používání AI. LLM byly vy
 \texttt{semantic.c/.h} & Dvouprůchodový sémantický analyzátor. V prvním průchodu registruje všechny funkce, ve druhém kontroluje jejich těla. \\ \hline
 \texttt{code\_generator.c/.h} & Generátor cílového kódu, který rekurzivním průchodem AST vypisuje na stdout program v IFJcode26 včetně vestavěných funkcí. \\ \hline
 \end{tabularx}
-\caption{Popis modulů}
 \end{table}
 ```
 
@@ -194,6 +194,166 @@ Jednořádková těla větví `if/else` nebo cyklu `for` se při průchodu parse
 
 Když syntaktická analýza narazí na jakýkoliv výraz (v gramatice `<expression>`), zavolá `parse_expression` z precedenčního analyzátoru. Precedence dostává stejnou strukturu `Parser` jako vlastní funkce syntaktické analýzy a využívá potom zpětně `next_token`, aby načítala další tokeny. Díky tomu se odsazení řeší pouze na jednom místě.
 Když precedence čeká operand a dostane `if`, zavolá zpátky parserovu `parse_if_expression`. Parser a precedence se tak mohou navzájem rekurzivně volat.
+
+### LL gramatika
+
+```{=latex}
+{\footnotesize\ttfamily
+\begin{longtable}{r l >{\raggedright\arraybackslash}p{9.2cm}}
+\hline \rmfamily\bfseries č. & \rmfamily\bfseries neterminál & \rmfamily\bfseries pravá strana \\ \hline \endhead
+1. & \textless{}program\textgreater{} & $\rightarrow$ TOK\_KW\_IMPORT TOK\_ID TOK\_DOT TOK\_MULTIPLY TOK\_EOL \textless{}functions\textgreater{} TOK\_EOF \\
+2. & \textless{}functions\textgreater{} & $\rightarrow$ \textless{}function\textgreater{} \textless{}functions\textgreater{} \\
+3. & \textless{}functions\textgreater{} & $\rightarrow$ \textless{}function\_main\textgreater{} \textless{}functions\textgreater{} \\
+4. & \textless{}functions\textgreater{} & $\rightarrow$ \textless{}extension\textgreater{} \textless{}functions\textgreater{} \\
+5. & \textless{}functions\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+6. & \textless{}function\textgreater{} & $\rightarrow$ TOK\_KW\_DEF TOK\_ID \textless{}parameter\_list\textgreater{} \textless{}optional\_type\textgreater{} TOK\_ASSIGN \textless{}function\_body\textgreater{} \\
+7. & \textless{}function\_main\textgreater{} & $\rightarrow$ TOK\_AT TOK\_ID"main" \textless{}optional\_eol\textgreater{} \textless{}function\textgreater{} \\
+8. & \textless{}optional\_eol\textgreater{} & $\rightarrow$ TOK\_EOL \\
+9. & \textless{}optional\_eol\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+10. & \textless{}parameter\_list\textgreater{} & $\rightarrow$ TOK\_LEFT\_PARENTHESIS \textless{}parameters\textgreater{} TOK\_RIGHT\_PARENTHESIS \textless{}parameter\_list\textgreater{} \\
+11. & \textless{}parameter\_list\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+12. & \textless{}parameters\textgreater{} & $\rightarrow$ \textless{}parameter\textgreater{} \textless{}parameter\_next\textgreater{} \\
+13. & \textless{}parameters\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+14. & \textless{}parameter\_next\textgreater{} & $\rightarrow$ TOK\_COMMA \textless{}parameter\textgreater{} \textless{}parameter\_next\textgreater{} \\
+15. & \textless{}parameter\_next\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+16. & \textless{}parameter\textgreater{} & $\rightarrow$ TOK\_ID TOK\_COLON \textless{}type\textgreater{} \\
+17. & \textless{}optional\_type\textgreater{} & $\rightarrow$ TOK\_COLON \textless{}type\textgreater{} \\
+18. & \textless{}optional\_type\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+19. & \textless{}type\textgreater{} & $\rightarrow$ TOK\_KW\_INT \\
+20. & \textless{}type\textgreater{} & $\rightarrow$ TOK\_KW\_STRING \\
+21. & \textless{}type\textgreater{} & $\rightarrow$ TOK\_KW\_UNIT \\
+22. & \textless{}type\textgreater{} & $\rightarrow$ TOK\_KW\_DOUBLE \\
+23. & \textless{}type\textgreater{} & $\rightarrow$ TOK\_KW\_BOOLEAN \\
+24. & \textless{}function\_body\textgreater{} & $\rightarrow$ \textless{}value\textgreater{} \textless{}function\_body\_end\textgreater{} \\
+25. & \textless{}function\_body\textgreater{} & $\rightarrow$ TOK\_EOL \textless{}block\textgreater{} \\
+26. & \textless{}function\_body\_end\textgreater{} & $\rightarrow$ TOK\_EOL \\
+27. & \textless{}function\_body\_end\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+28. & \textless{}extension\textgreater{} & $\rightarrow$ TOK\_KW\_EXTENSION TOK\_LEFT\_PARENTHESIS \textless{}parameter\textgreater{} TOK\_RIGHT\_PARENTHESIS \textless{}extension\_end\textgreater{} \\
+29. & \textless{}extension\_end\textgreater{} & $\rightarrow$ TOK\_EOL TOK\_INDENT \textless{}extension\_method\_list\textgreater{} TOK\_DEDENT \\
+30. & \textless{}extension\_end\textgreater{} & $\rightarrow$ \textless{}function\textgreater{} \\
+31. & \textless{}extension\_method\_list\textgreater{} & $\rightarrow$ \textless{}function\textgreater{} \textless{}extension\_method\_list\textgreater{} \\
+32. & \textless{}extension\_method\_list\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+33. & \textless{}block\textgreater{} & $\rightarrow$ TOK\_INDENT \textless{}statement\textgreater{} \textless{}statement\_next\textgreater{} TOK\_DEDENT \\
+34. & \textless{}statement\textgreater{} & $\rightarrow$ \textless{}statement\_simple\textgreater{} \textless{}statement\_end\textgreater{} \\
+35. & \textless{}statement\textgreater{} & $\rightarrow$ \textless{}while\textgreater{} \\
+36. & \textless{}statement\_next\textgreater{} & $\rightarrow$ \textless{}statement\textgreater{} \textless{}statement\_next\textgreater{} \\
+37. & \textless{}statement\_next\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+38. & \textless{}statement\_end\textgreater{} & $\rightarrow$ TOK\_EOL \\
+39. & \textless{}statement\_end\textgreater{} & $\rightarrow$ TOK\_SEMICOLON \\
+40. & \textless{}statement\_end\textgreater{} & $\rightarrow$ TOK\_SEMICOLON TOK\_EOL \\
+41. & \textless{}statement\_end\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+42. & \textless{}statement\_simple\textgreater{} & $\rightarrow$ \textless{}variable\textgreater{} \\
+43. & \textless{}statement\_simple\textgreater{} & $\rightarrow$ \textless{}assign\textgreater{} \\
+44. & \textless{}statement\_simple\textgreater{} & $\rightarrow$ \textless{}return\textgreater{} \\
+45. & \textless{}statement\_simple\textgreater{} & $\rightarrow$ \textless{}expression\textgreater{} \\
+46. & \textless{}statement\_simple\textgreater{} & $\rightarrow$ \textless{}if\textgreater{} \\
+47. & \textless{}statement\_simple\textgreater{} & $\rightarrow$ \textless{}for\textgreater{} \\
+48. & \textless{}variable\textgreater{} & $\rightarrow$ \textless{}variable\_type\textgreater{} TOK\_ID \textless{}optional\_type\textgreater{} TOK\_ASSIGN \textless{}value\textgreater{} \\
+49. & \textless{}variable\_type\textgreater{} & $\rightarrow$ TOK\_KW\_VAR \\
+50. & \textless{}variable\_type\textgreater{} & $\rightarrow$ TOK\_KW\_VAL \\
+51. & \textless{}assign\textgreater{} & $\rightarrow$ TOK\_ID TOK\_ASSIGN \textless{}value\textgreater{} \\
+52. & \textless{}return\textgreater{} & $\rightarrow$ TOK\_KW\_RETURN \textless{}optional\_value\textgreater{} \\
+53. & \textless{}optional\_value\textgreater{} & $\rightarrow$ \textless{}value\textgreater{} \\
+54. & \textless{}optional\_value\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+55. & \textless{}value\textgreater{} & $\rightarrow$ \textless{}if\_expression\textgreater{} \\
+56. & \textless{}value\textgreater{} & $\rightarrow$ \textless{}expression\textgreater{} \\
+57. & \textless{}if\textgreater{} & $\rightarrow$ TOK\_KW\_IF \textless{}expression\textgreater{} TOK\_KW\_THEN \textless{}branch\textgreater{} \textless{}else\textgreater{} \\
+58. & \textless{}branch\textgreater{} & $\rightarrow$ TOK\_EOL \textless{}block\textgreater{} \\
+59. & \textless{}branch\textgreater{} & $\rightarrow$ \textless{}statement\_simple\textgreater{} \\
+60. & \textless{}else\textgreater{} & $\rightarrow$ TOK\_KW\_ELSE \textless{}else\_next\textgreater{} \\
+61. & \textless{}else\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+62. & \textless{}else\_next\textgreater{} & $\rightarrow$ \textless{}branch\textgreater{} \\
+63. & \textless{}else\_next\textgreater{} & $\rightarrow$ \textless{}if\textgreater{} \\
+64. & \textless{}if\_expression\textgreater{} & $\rightarrow$ TOK\_KW\_IF \textless{}expression\textgreater{} TOK\_KW\_THEN \textless{}branch\textgreater{} TOK\_KW\_ELSE \textless{}else\_expression\textgreater{} \\
+65. & \textless{}else\_expression\textgreater{} & $\rightarrow$ \textless{}if\_expression\textgreater{} \\
+66. & \textless{}else\_expression\textgreater{} & $\rightarrow$ \textless{}branch\textgreater{} \\
+67. & \textless{}while\textgreater{} & $\rightarrow$ TOK\_KW\_WHILE \textless{}expression\textgreater{} TOK\_KW\_DO TOK\_EOL \textless{}block\textgreater{} \\
+68. & \textless{}for\textgreater{} & $\rightarrow$ TOK\_KW\_FOR \textless{}for\_start\textgreater{} TOK\_KW\_DO \textless{}branch\textgreater{} \\
+69. & \textless{}for\_start\textgreater{} & $\rightarrow$ \textless{}for\_header\textgreater{} \\
+70. & \textless{}for\_start\textgreater{} & $\rightarrow$ \textless{}for\_header\_multiline\textgreater{} \\
+71. & \textless{}for\_header\textgreater{} & $\rightarrow$ \textless{}for\_generator\textgreater{} \textless{}for\_guard\_list\textgreater{} \\
+72. & \textless{}for\_header\_multiline\textgreater{} & $\rightarrow$ TOK\_EOL TOK\_INDENT \textless{}for\_generator\textgreater{} TOK\_EOL \textless{}for\_guard\_list\_multiline\textgreater{} TOK\_DEDENT \\
+73. & \textless{}for\_generator\textgreater{} & $\rightarrow$ TOK\_ID TOK\_CONTROL\_ARROW \textless{}expression\textgreater{} \textless{}to\_or\_until\textgreater{} \textless{}expression\textgreater{} \textless{}for\_optional\_by\textgreater{} \\
+74. & \textless{}to\_or\_until\textgreater{} & $\rightarrow$ TOK\_ID"to" \\
+75. & \textless{}to\_or\_until\textgreater{} & $\rightarrow$ TOK\_ID"until" \\
+76. & \textless{}for\_optional\_by\textgreater{} & $\rightarrow$ TOK\_ID"by" \textless{}expression\textgreater{} \\
+77. & \textless{}for\_optional\_by\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+78. & \textless{}for\_guard\_list\textgreater{} & $\rightarrow$ TOK\_KW\_IF \textless{}expression\textgreater{} \textless{}for\_guard\_list\textgreater{} \\
+79. & \textless{}for\_guard\_list\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+80. & \textless{}for\_guard\_list\_multiline\textgreater{} & $\rightarrow$ TOK\_KW\_IF \textless{}expression\textgreater{} TOK\_EOL \textless{}for\_guard\_list\_multiline\textgreater{} \\
+81. & \textless{}for\_guard\_list\_multiline\textgreater{} & $\rightarrow$ $\varepsilon$ \\
+\hline
+\end{longtable}}
+```
+
+### LL tabulka
+
+```{=latex}
+\begin{center}
+\setlength{\tabcolsep}{1.5pt}
+\renewcommand{\arraystretch}{1.15}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}[b]{|l|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|}
+\hline
+ & \rotatebox{90}{\ttfamily TOK\_KW\_IMPORT } & \rotatebox{90}{\ttfamily TOK\_ID } & \rotatebox{90}{\ttfamily TOK\_DOT } & \rotatebox{90}{\ttfamily TOK\_MULTIPLY } & \rotatebox{90}{\ttfamily TOK\_EOL } & \rotatebox{90}{\ttfamily TOK\_EOF } & \rotatebox{90}{\ttfamily TOK\_KW\_DEF } & \rotatebox{90}{\ttfamily TOK\_ASSIGN } & \rotatebox{90}{\ttfamily TOK\_AT } & \rotatebox{90}{\ttfamily TOK\_ID"main" } & \rotatebox{90}{\ttfamily TOK\_LEFT\_PARENTHESIS } & \rotatebox{90}{\ttfamily TOK\_RIGHT\_PARENTHESIS } & \rotatebox{90}{\ttfamily TOK\_COMMA } & \rotatebox{90}{\ttfamily TOK\_COLON } & \rotatebox{90}{\ttfamily TOK\_KW\_INT } & \rotatebox{90}{\ttfamily TOK\_KW\_STRING } & \rotatebox{90}{\ttfamily TOK\_KW\_UNIT } & \rotatebox{90}{\ttfamily TOK\_KW\_DOUBLE } & \rotatebox{90}{\ttfamily TOK\_KW\_BOOLEAN } & \rotatebox{90}{\ttfamily TOK\_KW\_EXTENSION } & \rotatebox{90}{\ttfamily TOK\_INDENT } & \rotatebox{90}{\ttfamily TOK\_DEDENT } & \rotatebox{90}{\ttfamily TOK\_SEMICOLON } & \rotatebox{90}{\ttfamily \textless{}expression\textgreater{} } & \rotatebox{90}{\ttfamily TOK\_KW\_VAR } & \rotatebox{90}{\ttfamily TOK\_KW\_VAL } & \rotatebox{90}{\ttfamily TOK\_KW\_RETURN } & \rotatebox{90}{\ttfamily TOK\_KW\_IF } & \rotatebox{90}{\ttfamily TOK\_KW\_THEN } & \rotatebox{90}{\ttfamily TOK\_KW\_ELSE } & \rotatebox{90}{\ttfamily TOK\_KW\_WHILE } & \rotatebox{90}{\ttfamily TOK\_KW\_DO } & \rotatebox{90}{\ttfamily TOK\_KW\_FOR } & \rotatebox{90}{\ttfamily TOK\_CONTROL\_ARROW } & \rotatebox{90}{\ttfamily TOK\_ID"to" } & \rotatebox{90}{\ttfamily TOK\_ID"until" } & \rotatebox{90}{\ttfamily TOK\_ID"by" } \\ \hline
+{\ttfamily \textless{}program\textgreater{}} & 1 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}functions\textgreater{}} &  &  &  &  &  & 5 & 2 &  & 3 &  &  &  &  &  &  &  &  &  &  & 4 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}function\textgreater{}} &  &  &  &  &  &  & 6 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}function\_main\textgreater{}} &  &  &  &  &  &  &  &  & 7 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}optional\_eol\textgreater{}} &  &  &  &  & 8 &  & 9 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}parameter\_list\textgreater{}} &  &  &  &  &  &  &  & 11 &  &  & 10 &  &  & 11 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}parameters\textgreater{}} &  & 12 &  &  &  &  &  &  &  &  &  & 13 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}parameter\_next\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  & 15 & 14 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}parameter\textgreater{}} &  & 16 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}optional\_type\textgreater{}} &  &  &  &  &  &  &  & 18 &  &  &  &  &  & 17 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}type\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 19 & 20 & 21 & 22 & 23 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}function\_body\textgreater{}} &  & 24 &  &  & 25 &  &  &  &  &  & 24 &  &  &  &  &  &  &  &  &  &  &  &  & 24 &  &  &  & 24 &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}function\_body\_end\textgreater{}} &  &  &  &  & 26 & 27 & 27 &  & 27 &  &  &  &  &  &  &  &  &  &  & 27 &  & 27 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}extension\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 28 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}extension\_end\textgreater{}} &  &  &  &  & 29 &  & 30 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}extension\_method\_list\textgreater{}} &  &  &  &  &  &  & 31 &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 32 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}block\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 33 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}statement\textgreater{}} &  & 34 &  &  &  &  &  &  &  &  & 34 &  &  &  &  &  &  &  &  &  &  &  &  & 34 & 34 & 34 & 34 & 34 &  &  & 35 &  & 34 &  &  &  &  \\ \hline
+{\ttfamily \textless{}statement\_next\textgreater{}} &  & 36 &  &  &  &  &  &  &  &  & 36 &  &  &  &  &  &  &  &  &  &  & 37 &  & 36 & 36 & 36 & 36 & 36 &  &  & 36 &  & 36 &  &  &  &  \\ \hline
+{\ttfamily \textless{}statement\_end\textgreater{}} &  & 41 &  &  & 38 &  &  &  &  &  & 41 &  &  &  &  &  &  &  &  &  &  & 41 & 39,40 & 41 & 41 & 41 & 41 & 41 &  &  & 41 &  & 41 &  &  &  &  \\ \hline
+{\ttfamily \textless{}statement\_simple\textgreater{}} &  & 43,45 &  &  &  &  &  &  &  &  & 45 &  &  &  &  &  &  &  &  &  &  &  &  & 45 & 42 & 42 & 44 & 45,46 &  &  &  &  & 47 &  &  &  &  \\ \hline
+{\ttfamily \textless{}variable\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 48 & 48 &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}variable\_type\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 49 & 50 &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}assign\textgreater{}} &  & 51 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}return\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 52 &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}optional\_value\textgreater{}} &  & 53,54 &  &  & 54 & 54 & 54 &  & 54 &  & 53,54 &  &  &  &  &  &  &  &  & 54 &  & 54 & 54 & 53,54 & 54 & 54 & 54 & 53,54 &  & 54 & 54 &  & 54 &  &  &  &  \\ \hline
+{\ttfamily \textless{}value\textgreater{}} &  & 56 &  &  &  &  &  &  &  &  & 56 &  &  &  &  &  &  &  &  &  &  &  &  & 56 &  &  &  & 55,56 &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}if\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 57 &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}branch\textgreater{}} &  & 59 &  &  & 58 &  &  &  &  &  & 59 &  &  &  &  &  &  &  &  &  &  &  &  & 59 & 59 & 59 & 59 & 59 &  &  &  &  & 59 &  &  &  &  \\ \hline
+{\ttfamily \textless{}else\textgreater{}} &  & 61 &  &  & 61 & 61 & 61 &  & 61 &  & 61 &  &  &  &  &  &  &  &  & 61 &  & 61 & 61 & 61 & 61 & 61 & 61 & 61 &  & 60,61 & 61 &  & 61 &  &  &  &  \\ \hline
+{\ttfamily \textless{}else\_next\textgreater{}} &  & 62 &  &  & 62 &  &  &  &  &  & 62 &  &  &  &  &  &  &  &  &  &  &  &  & 62 & 62 & 62 & 62 & 62,63 &  &  &  &  & 62 &  &  &  &  \\ \hline
+{\ttfamily \textless{}if\_expression\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 64 &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}else\_expression\textgreater{}} &  & 66 &  &  & 66 &  &  &  &  &  & 66 &  &  &  &  &  &  &  &  &  &  &  &  & 66 & 66 & 66 & 66 & 65,66 &  &  &  &  & 66 &  &  &  &  \\ \hline
+{\ttfamily \textless{}while\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 67 &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}for\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 68 &  &  &  &  \\ \hline
+{\ttfamily \textless{}for\_start\textgreater{}} &  & 69 &  &  & 70 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}for\_header\textgreater{}} &  & 71 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}for\_header\_multiline\textgreater{}} &  &  &  &  & 72 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}for\_generator\textgreater{}} &  & 73 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}to\_or\_until\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 74 & 75 &  \\ \hline
+{\ttfamily \textless{}for\_optional\_by\textgreater{}} &  &  &  &  & 77 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 77 &  &  &  & 77 &  &  &  &  & 76 \\ \hline
+{\ttfamily \textless{}for\_guard\_list\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 78 &  &  &  & 79 &  &  &  &  &  \\ \hline
+{\ttfamily \textless{}for\_guard\_list\_multiline\textgreater{}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 81 &  &  &  &  &  & 80 &  &  &  &  &  &  &  &  &  \\ \hline
+\end{tabular}}
+\end{center}
+```
+
+```{=latex}
+{\footnotesize\itshape Pozn.: sloupec \texttt{\textless{}expression\textgreater{}} není technicky vzato terminál, takže v LL tabulce je jím myšlen „token, kterým může začínat výraz“.\par}
+```
+
+LL tabulka obsahuje několik LL(1) konfliktů - každý z nich parser řeší konkrétně způsobem popsaným níže:
+
+1. `<statement_simple>` při `TOK_ID` může následovat přiřazení nebo výraz. Rozhoduje se podle dalšího tokenu `TOK_ASSIGN`, tedy LL(2).
+2. Také LL(2) pro `TOK_SEMICOLON` - parser zkontroluje, zda za středníkem nenásleduje `TOK_EOL` - pokud ano, tak ho zkonzumuje.
+3. `TOK_KW_IF` - Pro `<statement_simple>`, `<value>`, `<else_next>` a `<else_expression>` parser vždy zvolí `if` pravidlo.
+4. `<optional_value>` - prázdný return se bere jen před `TOK_EOL`, `TOK_SEMICOLON` a `else`.
+5. Dangling else v `<else>` patří vždy k nejbližšímu if.
 
 ### Precedenční syntaktická analýza
 
