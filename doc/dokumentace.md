@@ -107,11 +107,11 @@ Na začátku jsme se v týmu dohodli na kultuře používání AI. LLM byly vyu�
 \texttt{main.c} & Vstupní bod překladače, postupně volá jednotlivé části a při chybě vrátí návratový kód. \\ \hline
 \texttt{token.h} & \\ \hline
 \texttt{types.h} & \\ \hline
-\texttt{scanner.c/.h} & \\ \hline
-\texttt{scanner\_buffer.c/.h} & \\ \hline
+\texttt{scanner.c/.h} & Lexikální analyzátor. Zpracovává zdrojový kód pomocí deterministického konečného automatu a předává syntaktickému analyzátoru tokeny. \\ \hline
+\texttt{scanner\_buffer.c/.h} & Dynamicky alokovaná vyrovnávací paměť lexikálního analyzátoru. Při zaplnění zdvojnásobí svoji kapacitu. \\ \hline
 \texttt{parser.c/.h} & \\ \hline
-\texttt{precedence\_parser.c/.h} & \\ \hline
-\texttt{precedence\_stack.c/.h} & \\ \hline
+\texttt{precedence\_parser.c/.h} & Precedenční analyzátor. Zpracovává výrazy pomocí precedenční tabulky a redukčních pravidel a vytváří AST. \\ \hline
+\texttt{precedence\_stack.c/.h} & Dynamicky alokovaný zásobník precedenčního analyzátoru. Při zaplnění zdvojnásobí svoji kapacitu. \\ \hline
 \texttt{ast.c/.h} & \\ \hline
 \texttt{hashtable.c/.h} & ADT obecné hashovací tabulky s otevřeným adresováním. Dle potřeby zvětšuje či přehashuje tabulku. \\ \hline
 \texttt{symtable.c/.h} & ADT tabulky symbolů využívající hashovací tabulku a hashovací funkci djb2. Uchovává informace o funkcích a proměnných, stará se o rozsahy platnosti a přetížení funkcí či proměnných. \\ \hline
